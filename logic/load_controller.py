@@ -65,7 +65,7 @@ PRESETS: dict[str, dict[str, bool]] = {
         "inverter": True,
     },
     "Full Hookup": {
-        "pump": True,
+        "pump": False,
         "starlink": True,
         "router": True,
         "water_heater_electric": True,
