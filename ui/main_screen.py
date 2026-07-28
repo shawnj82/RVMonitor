@@ -2,6 +2,8 @@
 Main dashboard screen – tappable tiles for every RV system.
 
 Layout is optimised for a 600 × 1024 vertical touchscreen.
+Tiles are grouped by system: Water, Battery, Propane.
+Each group has a section header; tiles show a short name only.
 """
 
 from __future__ import annotations
@@ -12,7 +14,6 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QScrollArea,
@@ -34,12 +35,11 @@ REFRESH_MS = 5_000
 
 
 class SystemTile(QFrame):
-    """A single tappable dashboard tile."""
+    """A single tappable dashboard tile showing a short label and gauge."""
 
     def __init__(
         self,
         title: str,
-        subtitle: str,
         gauge: QWidget,
         navigator: "Navigator",
         detail_screen_factory,
@@ -52,52 +52,41 @@ class SystemTile(QFrame):
 
         self.setObjectName("SystemTile")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(110)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self._build_ui(title, subtitle, gauge)
+        self._build_ui(title, gauge)
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
 
-    def _build_ui(self, title: str, subtitle: str, gauge: QWidget) -> None:
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(14)
+    def _build_ui(self, title: str, gauge: QWidget) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignHCenter)
 
-        # Gauge on the left
-        gauge.setFixedSize(56, 90)
-        layout.addWidget(gauge)
+        # Gauge centered at top
+        gauge.setFixedSize(44, 70)
+        gauge_row = QHBoxLayout()
+        gauge_row.addStretch()
+        gauge_row.addWidget(gauge)
+        gauge_row.addStretch()
+        layout.addLayout(gauge_row)
 
-        # Text block
-        text_col = QVBoxLayout()
-        text_col.setSpacing(4)
-
+        # Short label
         title_label = QLabel(title)
-        title_label.setFont(QFont("Sans Serif", 14, QFont.Bold))
+        title_label.setFont(QFont("Sans Serif", 13, QFont.Bold))
         title_label.setStyleSheet("color: #eceff1;")
-        text_col.addWidget(title_label)
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
 
-        sub_label = QLabel(subtitle)
-        sub_label.setFont(QFont("Sans Serif", 11))
-        sub_label.setStyleSheet("color: #90a4ae;")
-        text_col.addWidget(sub_label)
-
-        text_col.addStretch()
-
+        # Health indicator dot
         self._status_dot = QLabel("●")
-        self._status_dot.setFont(QFont("Sans Serif", 16))
-        text_col.addWidget(self._status_dot)
-
-        layout.addLayout(text_col)
-        layout.addStretch()
-
-        # Chevron hint
-        arrow = QLabel("›")
-        arrow.setFont(QFont("Sans Serif", 22))
-        arrow.setStyleSheet("color: #546e7a;")
-        layout.addWidget(arrow)
+        self._status_dot.setFont(QFont("Sans Serif", 12))
+        self._status_dot.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._status_dot)
 
     def set_healthy(self, healthy: bool) -> None:
         color = "#66bb6a" if healthy else "#ef5350"
@@ -128,16 +117,41 @@ class SystemTile(QFrame):
         )
 
 
+def _section_header(text: str) -> QLabel:
+    """Return a styled section-group label (e.g. 'Water', 'Battery')."""
+    label = QLabel(text)
+    label.setFont(QFont("Sans Serif", 11, QFont.Bold))
+    label.setStyleSheet(
+        "color: #546e7a; letter-spacing: 1px; padding: 4px 0 2px 4px;"
+    )
+    label.setTextFormat(Qt.PlainText)
+    return label
+
+
+def _tile_row(tiles: list[SystemTile]) -> QHBoxLayout:
+    """Pack a list of tiles into an evenly-spaced horizontal row."""
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    for tile in tiles:
+        row.addWidget(tile)
+    return row
+
+
 class MainScreen(QWidget):
     """
-    Main dashboard showing tiles for all RV systems.
+    Main dashboard showing grouped tiles for all RV systems.
     Designed for 600 × 1024 vertical display.
+
+    Groups:
+        Water    – Fresh | Grey | Black  (3 tiles across)
+        Battery  – House | Accessory     (2 tiles across)
+        Propane  – Tank 1 | Tank 2       (2 tiles across)
     """
 
     def __init__(self, navigator: "Navigator", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._navigator = navigator
-        self._tiles: list[tuple[SystemTile, callable, callable]] = []
+        self._tiles: list[tuple[SystemTile, BarGauge, callable]] = []
 
         self._build_ui()
         self._refresh_data()
@@ -171,7 +185,7 @@ class MainScreen(QWidget):
 
         root.addWidget(header)
 
-        # Scrollable tile grid
+        # Scrollable content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { background: #0d1b2a; border: none; }")
@@ -179,9 +193,9 @@ class MainScreen(QWidget):
 
         container = QWidget()
         container.setStyleSheet("background: #0d1b2a;")
-        grid = QGridLayout(container)
-        grid.setContentsMargins(12, 12, 12, 12)
-        grid.setSpacing(10)
+        content = QVBoxLayout(container)
+        content.setContentsMargins(12, 14, 12, 14)
+        content.setSpacing(6)
 
         # Import detail screens here to avoid circular imports
         from ui.detail_screens import (
@@ -195,159 +209,99 @@ class MainScreen(QWidget):
 
         nav = self._navigator
 
-        def make_fresh_tile():
-            data = get_fresh_level()
-            gauge = BarGauge(
-                data["capacity_gallons"],
-                data["current_gallons"],
-                fill_color=QColor("#4fc3f7"),
-                warn_threshold=0.20,
-                warn_high=False,
-            )
-            tile = SystemTile(
-                "Fresh Water",
-                f"{data['capacity_gallons']:.0f} gal tank",
-                gauge,
-                nav,
-                lambda: FreshTankDetailScreen(nav),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, get_fresh_level
+        # ── Water ──────────────────────────────────────────────────────
+        content.addWidget(_section_header("Water"))
+        content.addWidget(_group_divider())
 
-        def make_grey_tile():
-            data = get_grey_level()
-            gauge = BarGauge(
-                data["capacity_gallons"],
-                data["current_gallons"],
-                fill_color=QColor("#78909c"),
-                warn_threshold=0.80,
-                warn_high=True,
-            )
-            tile = SystemTile(
-                "Grey Water",
-                f"{data['capacity_gallons']:.0f} gal tank",
-                gauge,
-                nav,
-                lambda: GreyTankDetailScreen(nav),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, get_grey_level
+        fresh_data = get_fresh_level()
+        fresh_gauge = BarGauge(
+            fresh_data["capacity_gallons"], fresh_data["current_gallons"],
+            fill_color=QColor("#4fc3f7"), warn_threshold=0.20, warn_high=False,
+        )
+        fresh_tile = SystemTile("Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav))
+        fresh_tile.set_healthy(fresh_data["healthy"])
 
-        def make_black_tile():
-            data = get_black_level()
-            gauge = BarGauge(
-                data["capacity_gallons"],
-                data["current_gallons"],
-                fill_color=QColor("#424242"),
-                warn_threshold=0.80,
-                warn_high=True,
-            )
-            tile = SystemTile(
-                "Black Water",
-                f"{data['capacity_gallons']:.0f} gal tank",
-                gauge,
-                nav,
-                lambda: BlackTankDetailScreen(nav),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, get_black_level
+        grey_data = get_grey_level()
+        grey_gauge = BarGauge(
+            grey_data["capacity_gallons"], grey_data["current_gallons"],
+            fill_color=QColor("#78909c"), warn_threshold=0.80, warn_high=True,
+        )
+        grey_tile = SystemTile("Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav))
+        grey_tile.set_healthy(grey_data["healthy"])
 
-        def make_house_batt_tile():
-            data = get_house_battery_status()
-            gauge = BarGauge(
-                100,
-                data["percent"],
-                fill_color=QColor("#aed581"),
-                warn_threshold=0.20,
-                warn_high=False,
-            )
-            tile = SystemTile(
-                "House Battery",
-                "Battery bank",
-                gauge,
-                nav,
-                lambda: HouseBatteryDetailScreen(nav),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, get_house_battery_status
+        black_data = get_black_level()
+        black_gauge = BarGauge(
+            black_data["capacity_gallons"], black_data["current_gallons"],
+            fill_color=QColor("#424242"), warn_threshold=0.80, warn_high=True,
+        )
+        black_tile = SystemTile("Black", black_gauge, nav, lambda: BlackTankDetailScreen(nav))
+        black_tile.set_healthy(black_data["healthy"])
 
-        def make_acc_batt_tile():
-            data = get_accessory_battery_status()
-            gauge = BarGauge(
-                100,
-                data["percent"],
-                fill_color=QColor("#aed581"),
-                warn_threshold=0.20,
-                warn_high=False,
-            )
-            tile = SystemTile(
-                "Accessory Battery",
-                "Battery bank",
-                gauge,
-                nav,
-                lambda: AccessoryBatteryDetailScreen(nav),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, get_accessory_battery_status
+        content.addLayout(_tile_row([fresh_tile, grey_tile, black_tile]))
 
-        def make_propane1_tile():
-            data = get_propane_status(1)
-            gauge = BarGauge(
-                100,
-                data["percent_full"],
-                fill_color=QColor("#ffb74d"),
-                warn_threshold=0.10,
-                warn_high=False,
-            )
-            tile = SystemTile(
-                "Propane Tank 1",
-                "LP gas",
-                gauge,
-                nav,
-                lambda: PropaneDetailScreen(nav, tank_number=1),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, lambda: get_propane_status(1)
-
-        def make_propane2_tile():
-            data = get_propane_status(2)
-            gauge = BarGauge(
-                100,
-                data["percent_full"],
-                fill_color=QColor("#ffb74d"),
-                warn_threshold=0.10,
-                warn_high=False,
-            )
-            tile = SystemTile(
-                "Propane Tank 2",
-                "LP gas",
-                gauge,
-                nav,
-                lambda: PropaneDetailScreen(nav, tank_number=2),
-            )
-            tile.set_healthy(data["healthy"])
-            return tile, gauge, lambda: get_propane_status(2)
-
-        tile_factories = [
-            make_fresh_tile,
-            make_grey_tile,
-            make_black_tile,
-            make_house_batt_tile,
-            make_acc_batt_tile,
-            make_propane1_tile,
-            make_propane2_tile,
+        self._tiles += [
+            (fresh_tile, fresh_gauge, get_fresh_level),
+            (grey_tile, grey_gauge, get_grey_level),
+            (black_tile, black_gauge, get_black_level),
         ]
 
-        for idx, factory in enumerate(tile_factories):
-            tile, gauge, data_fn = factory()
-            row, col = divmod(idx, 2)
-            grid.addWidget(tile, row, col)
-            self._tiles.append((tile, gauge, data_fn))
+        # ── Battery ────────────────────────────────────────────────────
+        content.addSpacing(10)
+        content.addWidget(_section_header("Battery"))
+        content.addWidget(_group_divider())
 
-        # Make columns equal width
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        house_data = get_house_battery_status()
+        house_gauge = BarGauge(
+            100, house_data["percent"],
+            fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
+        )
+        house_tile = SystemTile("House", house_gauge, nav, lambda: HouseBatteryDetailScreen(nav))
+        house_tile.set_healthy(house_data["healthy"])
 
+        acc_data = get_accessory_battery_status()
+        acc_gauge = BarGauge(
+            100, acc_data["percent"],
+            fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
+        )
+        acc_tile = SystemTile("Accessory", acc_gauge, nav, lambda: AccessoryBatteryDetailScreen(nav))
+        acc_tile.set_healthy(acc_data["healthy"])
+
+        content.addLayout(_tile_row([house_tile, acc_tile]))
+
+        self._tiles += [
+            (house_tile, house_gauge, get_house_battery_status),
+            (acc_tile, acc_gauge, get_accessory_battery_status),
+        ]
+
+        # ── Propane ────────────────────────────────────────────────────
+        content.addSpacing(10)
+        content.addWidget(_section_header("Propane"))
+        content.addWidget(_group_divider())
+
+        p1_data = get_propane_status(1)
+        p1_gauge = BarGauge(
+            100, p1_data["percent_full"],
+            fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
+        )
+        p1_tile = SystemTile("Tank 1", p1_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=1))
+        p1_tile.set_healthy(p1_data["healthy"])
+
+        p2_data = get_propane_status(2)
+        p2_gauge = BarGauge(
+            100, p2_data["percent_full"],
+            fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
+        )
+        p2_tile = SystemTile("Tank 2", p2_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=2))
+        p2_tile.set_healthy(p2_data["healthy"])
+
+        content.addLayout(_tile_row([p1_tile, p2_tile]))
+
+        self._tiles += [
+            (p1_tile, p1_gauge, lambda: get_propane_status(1)),
+            (p2_tile, p2_gauge, lambda: get_propane_status(2)),
+        ]
+
+        content.addStretch()
         scroll.setWidget(container)
         root.addWidget(scroll)
 
@@ -359,7 +313,6 @@ class MainScreen(QWidget):
         for tile, gauge, data_fn in self._tiles:
             data = data_fn()
 
-            # Determine value/capacity based on whether it's a tank or battery
             if "current_gallons" in data:
                 gauge.set_value(data["current_gallons"])
             elif "percent_full" in data:
@@ -368,3 +321,12 @@ class MainScreen(QWidget):
                 gauge.set_value(data["percent"])
 
             tile.set_healthy(data.get("healthy", True))
+
+
+def _group_divider() -> QFrame:
+    """A subtle horizontal rule separating the section label from its tiles."""
+    line = QFrame()
+    line.setFrameShape(QFrame.HLine)
+    line.setFixedHeight(1)
+    line.setStyleSheet("background: #1e2a38; border: none;")
+    return line
