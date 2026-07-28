@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from logic.battery_logic import get_accessory_battery_status, get_house_battery_status
 from logic.propane_logic import get_propane_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
-from ui.widgets import BarGauge
+from ui.widgets import BarGauge, TileIcon
 
 if TYPE_CHECKING:
     from ui.navigation import Navigator
@@ -43,6 +43,7 @@ class SystemTile(QFrame):
         gauge: QWidget,
         navigator: "Navigator",
         detail_screen_factory,
+        icon: QWidget | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -55,13 +56,13 @@ class SystemTile(QFrame):
         self.setMinimumHeight(110)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self._build_ui(title, gauge)
+        self._build_ui(title, gauge, icon)
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
 
-    def _build_ui(self, title: str, gauge: QWidget) -> None:
+    def _build_ui(self, title: str, gauge: QWidget, icon: QWidget | None = None) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
@@ -75,12 +76,18 @@ class SystemTile(QFrame):
         gauge_row.addStretch()
         layout.addLayout(gauge_row)
 
-        # Short label
+        # Icon + short label row
+        title_row = QHBoxLayout()
+        title_row.setSpacing(4)
+        title_row.setAlignment(Qt.AlignHCenter)
+        if icon is not None:
+            title_row.addWidget(icon)
         title_label = QLabel(title)
         title_label.setFont(QFont("Sans Serif", 13, QFont.Bold))
         title_label.setStyleSheet("color: #eceff1;")
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
+        title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        title_row.addWidget(title_label)
+        layout.addLayout(title_row)
 
         # Health indicator dot
         self._status_dot = QLabel("●")
@@ -218,7 +225,10 @@ class MainScreen(QWidget):
             fresh_data["capacity_gallons"], fresh_data["current_gallons"],
             fill_color=QColor("#4fc3f7"), warn_threshold=0.20, warn_high=False,
         )
-        fresh_tile = SystemTile("Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav))
+        fresh_tile = SystemTile(
+            "Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav),
+            icon=TileIcon(TileIcon.WATER_DROP, QColor("#4fc3f7")),
+        )
         fresh_tile.set_healthy(fresh_data["healthy"])
 
         grey_data = get_grey_level()
@@ -226,7 +236,10 @@ class MainScreen(QWidget):
             grey_data["capacity_gallons"], grey_data["current_gallons"],
             fill_color=QColor("#78909c"), warn_threshold=0.80, warn_high=True,
         )
-        grey_tile = SystemTile("Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav))
+        grey_tile = SystemTile(
+            "Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav),
+            icon=TileIcon(TileIcon.WASTE_TANK, QColor("#78909c")),
+        )
         grey_tile.set_healthy(grey_data["healthy"])
 
         black_data = get_black_level()
@@ -234,7 +247,10 @@ class MainScreen(QWidget):
             black_data["capacity_gallons"], black_data["current_gallons"],
             fill_color=QColor("#424242"), warn_threshold=0.80, warn_high=True,
         )
-        black_tile = SystemTile("Black", black_gauge, nav, lambda: BlackTankDetailScreen(nav))
+        black_tile = SystemTile(
+            "Black", black_gauge, nav, lambda: BlackTankDetailScreen(nav),
+            icon=TileIcon(TileIcon.WASTE_TANK, QColor("#607d8b")),
+        )
         black_tile.set_healthy(black_data["healthy"])
 
         content.addLayout(_tile_row([fresh_tile, grey_tile, black_tile]))
@@ -255,7 +271,10 @@ class MainScreen(QWidget):
             100, house_data["percent"],
             fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
         )
-        house_tile = SystemTile("House", house_gauge, nav, lambda: HouseBatteryDetailScreen(nav))
+        house_tile = SystemTile(
+            "House", house_gauge, nav, lambda: HouseBatteryDetailScreen(nav),
+            icon=TileIcon(TileIcon.BATTERY, QColor("#aed581")),
+        )
         house_tile.set_healthy(house_data["healthy"])
 
         acc_data = get_accessory_battery_status()
@@ -263,7 +282,10 @@ class MainScreen(QWidget):
             100, acc_data["percent"],
             fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
         )
-        acc_tile = SystemTile("Accessory", acc_gauge, nav, lambda: AccessoryBatteryDetailScreen(nav))
+        acc_tile = SystemTile(
+            "Accessory", acc_gauge, nav, lambda: AccessoryBatteryDetailScreen(nav),
+            icon=TileIcon(TileIcon.BATTERY, QColor("#aed581")),
+        )
         acc_tile.set_healthy(acc_data["healthy"])
 
         content.addLayout(_tile_row([house_tile, acc_tile]))
@@ -283,7 +305,10 @@ class MainScreen(QWidget):
             100, p1_data["percent_full"],
             fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
         )
-        p1_tile = SystemTile("Tank 1", p1_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=1))
+        p1_tile = SystemTile(
+            "Tank 1", p1_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=1),
+            icon=TileIcon(TileIcon.PROPANE_TANK, QColor("#ffb74d")),
+        )
         p1_tile.set_healthy(p1_data["healthy"])
 
         p2_data = get_propane_status(2)
@@ -291,7 +316,10 @@ class MainScreen(QWidget):
             100, p2_data["percent_full"],
             fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
         )
-        p2_tile = SystemTile("Tank 2", p2_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=2))
+        p2_tile = SystemTile(
+            "Tank 2", p2_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=2),
+            icon=TileIcon(TileIcon.PROPANE_TANK, QColor("#ffb74d")),
+        )
         p2_tile.set_healthy(p2_data["healthy"])
 
         content.addLayout(_tile_row([p1_tile, p2_tile]))
