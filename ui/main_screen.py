@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from logic.battery_logic import get_accessory_battery_status, get_house_battery_status
 from logic.propane_logic import get_propane_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
+from ui.load_screens import LoadPresetBar
 from ui.widgets import BarGauge, TileIcon
 
 if TYPE_CHECKING:
@@ -177,21 +178,6 @@ class MainScreen(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Header bar
-        header = QWidget()
-        header.setFixedHeight(56)
-        header.setStyleSheet("background: #0d1b2a;")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
-
-        title = QLabel("RV Monitor")
-        title.setFont(QFont("Sans Serif", 18, QFont.Bold))
-        title.setStyleSheet("color: #4fc3f7;")
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-
-        root.addWidget(header)
-
         # Scrollable content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -332,6 +318,9 @@ class MainScreen(QWidget):
         content.addStretch()
         scroll.setWidget(container)
         root.addWidget(scroll)
+
+        # Preset bar pinned to the bottom
+        root.addWidget(LoadPresetBar(self._navigator, self))
 
     # ------------------------------------------------------------------
     # Data refresh
