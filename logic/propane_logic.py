@@ -2,6 +2,9 @@
 Propane logic – placeholder until real sensors are connected.
 """
 
+# Estimated daily consumption as a percentage of one full tank (placeholder)
+DAILY_USAGE_PERCENT = 5.0
+
 
 def get_propane_status(tank_number: int = 1) -> dict:
     """
@@ -26,3 +29,20 @@ def get_propane_status(tank_number: int = 1) -> dict:
         "psi": psi,
         "healthy": percent > 10.0,
     }
+
+
+def get_propane_days_remaining() -> float | None:
+    """
+    Estimate days until all propane is exhausted.
+
+    Assumes both tanks are consumed in sequence, so total remaining
+    is the sum of both tanks' percentages divided by the daily usage rate.
+
+    Returns days as a float, or None if DAILY_USAGE_PERCENT is zero.
+    """
+    if DAILY_USAGE_PERCENT <= 0:
+        return None
+    t1 = get_propane_status(1)
+    t2 = get_propane_status(2)
+    total_percent = t1["percent_full"] + t2["percent_full"]
+    return round(total_percent / DAILY_USAGE_PERCENT, 1)

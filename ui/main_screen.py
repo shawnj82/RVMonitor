@@ -22,10 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from logic.battery_logic import get_accessory_battery_status, get_house_battery_status
-from logic.propane_logic import get_propane_status
+from logic.battery_logic import get_accessory_battery_status, get_house_battery_status, get_power_days_remaining
+from logic.propane_logic import get_propane_status, get_propane_days_remaining
 from logic.solar_logic import get_solar_charger_status
-from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
+from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level, get_water_days_remaining
 from ui.load_screens import LoadPresetBar
 from ui.widgets import TileIcon
 
@@ -144,6 +144,34 @@ def _tile_row(tiles: list[SystemTile]) -> QHBoxLayout:
     return row
 
 
+def _days_text_and_color(days: float | None) -> tuple[str, str]:
+    """Return display text and hex color for a days-remaining value."""
+    if days is None:
+        return "Charging", "#4ade80"
+    if days < 1:
+        return "< 1 day remaining", "#ef4444"
+    if days < 2:
+        return "~1 day remaining", "#f97316"
+    return f"~{days:.0f} days remaining", "#94a3b8"
+
+
+def _make_days_label(days: float | None) -> QLabel:
+    """Create a styled 'X days remaining' section footer label."""
+    text, color = _days_text_and_color(days)
+    label = QLabel(text)
+    label.setFont(QFont("Inter", 11))
+    label.setAlignment(Qt.AlignCenter)
+    label.setStyleSheet(f"color: {color}; padding: 4px 0 2px 0;")
+    return label
+
+
+def _update_days_label(label: QLabel, days: float | None) -> None:
+    """Refresh the text and color of an existing days-remaining label."""
+    text, color = _days_text_and_color(days)
+    label.setText(text)
+    label.setStyleSheet(f"color: {color}; padding: 4px 0 2px 0;")
+
+
 class MainScreen(QWidget):
     """
     Main dashboard showing grouped tiles for all RV systems.
@@ -159,6 +187,7 @@ class MainScreen(QWidget):
         super().__init__(parent)
         self._navigator = navigator
         self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
+        self._section_days: list[tuple[QLabel, callable]] = []
 
         self._build_ui()
         self._refresh_data()
@@ -252,6 +281,10 @@ class MainScreen(QWidget):
 
         content.addLayout(_tile_row([fresh_tile, grey_tile, black_tile]))
 
+        water_days_label = _make_days_label(get_water_days_remaining())
+        content.addWidget(water_days_label)
+        self._section_days.append((water_days_label, get_water_days_remaining))
+
         self._tiles += [
             (fresh_tile, fresh_gauge, get_fresh_level),
             (grey_tile, grey_gauge, get_grey_level),
@@ -312,6 +345,10 @@ class MainScreen(QWidget):
 
         content.addLayout(_tile_row([house_tile, acc_tile, solar_tile]))
 
+        power_days_label = _make_days_label(get_power_days_remaining())
+        content.addWidget(power_days_label)
+        self._section_days.append((power_days_label, get_power_days_remaining))
+
         self._tiles += [
             (house_tile, house_gauge, get_house_battery_status),
             (acc_tile, acc_gauge, get_accessory_battery_status),
@@ -354,6 +391,10 @@ class MainScreen(QWidget):
 
         content.addLayout(_tile_row([p1_tile, p2_tile]))
 
+        propane_days_label = _make_days_label(get_propane_days_remaining())
+        content.addWidget(propane_days_label)
+        self._section_days.append((propane_days_label, get_propane_days_remaining))
+
         self._tiles += [
             (p1_tile, p1_gauge, lambda: get_propane_status(1)),
             (p2_tile, p2_gauge, lambda: get_propane_status(2)),
@@ -386,3 +427,6 @@ class MainScreen(QWidget):
                     gauge.set_amps(amps)
 
             tile.set_healthy(data.get("healthy", True))
+
+        for label, days_fn in self._section_days:
+            _update_days_label(label, days_fn())
