@@ -243,6 +243,16 @@ class TileIcon(QWidget):
             return QPainterPath()
         return draw_fn()
 
+    def _battery_geometry(self) -> tuple[float, float, float, float, float, float, float, float]:
+        x, y, w, h = self._icon_rect()
+        body_top = y + h * 0.28
+        body_h = h * 0.66
+        body_x = x + 1
+        body_w = w - 2
+        term_w = max(4.0, body_w * 0.16)
+        term_h = max(4.0, h * 0.13)
+        return body_x, body_top, body_w, body_h, term_w, term_h, y, h
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -256,9 +266,17 @@ class TileIcon(QWidget):
             ratio = self._level_percent / 100.0
             if ratio > 0:
                 x, y, w, h = self._icon_rect()
-                top = y + (1.0 - ratio) * h
+                clip_path = path
+                if self._icon_type == self.BATTERY:
+                    body_x, body_top, body_w, body_h, *_ = self._battery_geometry()
+                    top = body_top + (1.0 - ratio) * body_h
+                    x, y, w, h = body_x, body_top, body_w, body_h
+                    clip_path = QPainterPath()
+                    clip_path.addRoundedRect(body_x, body_top, body_w, body_h, 6, 6)
+                else:
+                    top = y + (1.0 - ratio) * h
                 painter.save()
-                painter.setClipPath(path)
+                painter.setClipPath(clip_path)
                 painter.setBrush(QBrush(self._fill_color()))
                 painter.drawRect(x, top, w, (y + h) - top + 1)
                 painter.restore()
@@ -323,20 +341,15 @@ class TileIcon(QWidget):
 
     def _path_battery(self) -> QPainterPath:
         """Car battery with two top terminals."""
-        x, y, w, h = self._icon_rect()
-        body_top = y + h * 0.28
-        body_h = h * 0.66
-        body_x = x + 1
-        body_w = w - 2
-        term_w = max(4.0, body_w * 0.16)
-        term_h = max(4.0, h * 0.13)
+        body_x, body_top, body_w, body_h, term_w, term_h, _y, _h = self._battery_geometry()
         left_term_x = body_x + body_w * 0.22 - (term_w / 2)
         right_term_x = body_x + body_w * 0.78 - (term_w / 2)
+        term_y = body_top - term_h
 
         path = QPainterPath()
         path.addRoundedRect(body_x, body_top, body_w, body_h, 6, 6)
-        path.addRoundedRect(left_term_x, y + 2, term_w, term_h, 2, 2)
-        path.addRoundedRect(right_term_x, y + 2, term_w, term_h, 2, 2)
+        path.addRoundedRect(left_term_x, term_y, term_w, term_h, 2, 2)
+        path.addRoundedRect(right_term_x, term_y, term_w, term_h, 2, 2)
         return path
 
     def _path_propane_tank(self) -> QPainterPath:
