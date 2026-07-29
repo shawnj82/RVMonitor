@@ -147,7 +147,7 @@ def _tile_row(tiles: list[SystemTile]) -> QHBoxLayout:
 def _days_text_and_color(days: float | None) -> tuple[str, str]:
     """Return display text and hex color for a days-remaining value."""
     if days is None:
-        return "Charging", "#4ade80"
+        return "Surplus", "#4ade80"
     if days < 1:
         return "< 1 day remaining", "#ef4444"
     if days < 2:

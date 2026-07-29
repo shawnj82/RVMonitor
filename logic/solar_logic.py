@@ -2,6 +2,9 @@
 Solar charger logic – placeholder until MPPT/solar telemetry is connected.
 """
 
+# Estimated peak sun hours per day (placeholder – replace with location/season data)
+PEAK_SUN_HOURS = 5.0
+
 
 def _mode_from_percent(percent: float) -> str:
     if percent >= 70.0:
@@ -26,10 +29,12 @@ def get_solar_charger_status() -> dict:
     percent = 62.0
     watts = 455.0
     amps = round(watts / 14.4, 1)
+    daily_ah = round(watts * PEAK_SUN_HOURS / 14.4, 1)
     return {
         "watts": watts,
         "amps": amps,
         "percent": percent,
         "mode": _mode_from_percent(percent),
         "healthy": percent >= 15.0,
+        "daily_ah": daily_ah,
     }

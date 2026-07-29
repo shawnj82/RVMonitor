@@ -100,10 +100,11 @@ class TestPowerDaysRemaining:
         assert result is None or isinstance(result, float)
 
     def test_returns_none_when_net_charging(self):
-        # With default placeholder data: house -5.2A + solar ~31.6A → net positive → None
+        # With default placeholder data: daily consumption = 5.2A × 24 = 124.8 Ah,
+        # daily generation = 455W × 5h / 14.4V ≈ 158 Ah → net surplus → None
         from logic.battery_logic import get_power_days_remaining
         result = get_power_days_remaining()
-        # Default mock has solar overwhelming the draw, so None is expected
+        # Default mock has solar generation exceeding daily draw, so None is expected
         assert result is None
 
     def test_discharging_returns_positive_days(self):
@@ -111,7 +112,7 @@ class TestPowerDaysRemaining:
         from unittest.mock import patch
 
         discharging_house = {"voltage": 12.0, "percent": 50.0, "amps": -10.0, "healthy": True}
-        no_solar = {"watts": 0.0, "amps": 0.0, "percent": 0.0, "mode": "moon", "healthy": False}
+        no_solar = {"watts": 0.0, "amps": 0.0, "percent": 0.0, "mode": "moon", "healthy": False, "daily_ah": 0.0}
 
         with patch("logic.battery_logic.get_house_battery_status", return_value=discharging_house), \
              patch("logic.solar_logic.get_solar_charger_status", return_value=no_solar):
