@@ -41,25 +41,25 @@ _PRESET_NAMES = ["Storage", "Boondock", "Full Hookup", "Manual"]
 # ── Button style sheets ───────────────────────────────────────────────────────
 
 _BTN_ACTIVE = (
-    "QPushButton { background: #1565c0; color: #e3f2fd; border-radius: 8px; "
-    "font-weight: bold; font-size: 13px; border: 2px solid #42a5f5; padding: 6px 4px; }"
-    "QPushButton:pressed { background: #0d47a1; }"
+    "QPushButton { background: #1d4ed8; color: #dbeafe; border-radius: 24px; "
+    "font-weight: bold; font-size: 13px; border: none; padding: 6px 4px; }"
+    "QPushButton:pressed { background: #1e40af; }"
 )
 _BTN_INACTIVE = (
-    "QPushButton { background: #152030; color: #78909c; border-radius: 8px; "
-    "font-size: 13px; border: 2px solid #263849; padding: 6px 4px; }"
-    "QPushButton:pressed { background: #1a2a3d; color: #90a4ae; }"
+    "QPushButton { background: transparent; color: #6b7280; border-radius: 24px; "
+    "font-size: 13px; border: none; padding: 6px 4px; }"
+    "QPushButton:pressed { color: #9ca3af; }"
 )
 
 _TOGGLE_ON = (
-    "QPushButton { background: #2e7d32; color: #c8e6c9; border-radius: 8px; "
-    "border: 2px solid #4caf50; }"
-    "QPushButton:pressed { background: #1b5e20; }"
+    "QPushButton { background: #15803d; color: #bbf7d0; border-radius: 21px; "
+    "border: none; }"
+    "QPushButton:pressed { background: #166534; }"
 )
 _TOGGLE_OFF = (
-    "QPushButton { background: #263849; color: #546e7a; border-radius: 8px; "
-    "border: 2px solid #37474f; }"
-    "QPushButton:pressed { background: #1e2a38; }"
+    "QPushButton { background: #1f2937; color: #4b5563; border-radius: 21px; "
+    "border: none; }"
+    "QPushButton:pressed { background: #374151; }"
 )
 
 
@@ -81,8 +81,8 @@ class LoadPresetBar(QWidget):
         self._custom_screen: CustomLoadScreen | None = None
         self._buttons: dict[str, QPushButton] = {}
 
-        self.setFixedHeight(72)
-        self.setStyleSheet("background: #0a1520; border-top: 1px solid #1e2a38;")
+        self.setFixedHeight(60)
+        self.setStyleSheet("background: #08090e; border-top: 1px solid #1f2937;")
 
         self._build_ui()
 
@@ -99,7 +99,7 @@ class LoadPresetBar(QWidget):
 
         for name in _PRESET_NAMES:
             btn = QPushButton(name)
-            btn.setFont(QFont("Sans Serif", 12))
+            btn.setFont(QFont("Inter", 12))
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked, n=name: self._on_preset_clicked(n))
@@ -151,23 +151,23 @@ class CustomLoadScreen(QWidget):
         # Header
         header = QWidget()
         header.setFixedHeight(56)
-        header.setStyleSheet("background: #0d1b2a;")
+        header.setStyleSheet("background: #08090e;")
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(8, 0, 16, 0)
 
         back_btn = QPushButton("‹ Back")
-        back_btn.setFont(QFont("Sans Serif", 14))
+        back_btn.setFont(QFont("Inter", 14))
         back_btn.setStyleSheet(
-            "QPushButton { color: #4fc3f7; background: transparent; border: none; padding: 4px 8px; }"
-            "QPushButton:pressed { color: #0288d1; }"
+            "QPushButton { color: #60a5fa; background: transparent; border: none; padding: 4px 8px; }"
+            "QPushButton:pressed { color: #3b82f6; }"
         )
         back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self._navigator.pop)
         h_layout.addWidget(back_btn)
 
         title_lbl = QLabel("Manual Loads")
-        title_lbl.setFont(QFont("Sans Serif", 16, QFont.Bold))
-        title_lbl.setStyleSheet("color: #eceff1;")
+        title_lbl.setFont(QFont("Inter", 16, QFont.Bold))
+        title_lbl.setStyleSheet("color: #f8fafc;")
         title_lbl.setAlignment(Qt.AlignCenter)
         h_layout.addWidget(title_lbl, stretch=1)
 
@@ -176,21 +176,15 @@ class CustomLoadScreen(QWidget):
         # Divider
         divider = QFrame()
         divider.setFrameShape(QFrame.HLine)
-        divider.setStyleSheet("color: #1e2a38;")
+        divider.setStyleSheet("background: #1f2937; border: none;")
         root.addWidget(divider)
 
         # Content
         content_widget = QWidget()
-        content_widget.setStyleSheet("background: #0d1b2a;")
+        content_widget.setStyleSheet("background: #08090e;")
         content = QVBoxLayout(content_widget)
         content.setContentsMargins(20, 16, 20, 16)
         content.setSpacing(0)
-
-        subtitle = QLabel("Tap a button to toggle each load on or off.")
-        subtitle.setFont(QFont("Sans Serif", 11))
-        subtitle.setStyleSheet("color: #546e7a; padding-bottom: 10px;")
-        subtitle.setWordWrap(True)
-        content.addWidget(subtitle)
 
         for load in LOADS:
             row = QHBoxLayout()
@@ -198,14 +192,14 @@ class CustomLoadScreen(QWidget):
             row.setSpacing(10)
 
             label = QLabel(LOAD_LABELS[load])
-            label.setFont(QFont("Sans Serif", 14))
-            label.setStyleSheet("color: #eceff1;")
+            label.setFont(QFont("Inter", 14))
+            label.setStyleSheet("color: #f8fafc;")
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             row.addWidget(label)
 
             btn = QPushButton()
-            btn.setFixedSize(80, 42)
-            btn.setFont(QFont("Sans Serif", 12, QFont.Bold))
+            btn.setFixedSize(84, 42)
+            btn.setFont(QFont("Inter", 12, QFont.Bold))
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked, ld=load: self._on_toggle(ld))
             row.addWidget(btn)
@@ -216,7 +210,7 @@ class CustomLoadScreen(QWidget):
             sep = QFrame()
             sep.setFrameShape(QFrame.HLine)
             sep.setFixedHeight(1)
-            sep.setStyleSheet("background: #1e2a38; border: none;")
+            sep.setStyleSheet("background: #1f2937; border: none;")
             content.addWidget(sep)
 
         content.addStretch()

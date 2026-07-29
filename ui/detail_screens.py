@@ -80,23 +80,23 @@ class BaseDetailScreen(QWidget):
         # Header
         header = QWidget()
         header.setFixedHeight(56)
-        header.setStyleSheet("background: #0d1b2a;")
+        header.setStyleSheet("background: #08090e;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 0, 16, 0)
 
         back_btn = QPushButton("‹ Back")
-        back_btn.setFont(QFont("Sans Serif", 14))
+        back_btn.setFont(QFont("Inter", 14))
         back_btn.setStyleSheet(
-            "QPushButton { color: #4fc3f7; background: transparent; border: none; padding: 4px 8px; }"
-            "QPushButton:pressed { color: #0288d1; }"
+            "QPushButton { color: #60a5fa; background: transparent; border: none; padding: 4px 8px; }"
+            "QPushButton:pressed { color: #3b82f6; }"
         )
         back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self._navigator.pop)
         header_layout.addWidget(back_btn)
 
         title_label = QLabel(title)
-        title_label.setFont(QFont("Sans Serif", 16, QFont.Bold))
-        title_label.setStyleSheet("color: #eceff1;")
+        title_label.setFont(QFont("Inter", 16, QFont.Bold))
+        title_label.setStyleSheet("color: #f8fafc;")
         title_label.setAlignment(Qt.AlignCenter)
         header_layout.addWidget(title_label, stretch=1)
 
@@ -110,10 +110,10 @@ class BaseDetailScreen(QWidget):
 
         # Content area
         self._content_widget = QWidget()
-        self._content_widget.setStyleSheet("background: #0d1b2a;")
+        self._content_widget.setStyleSheet("background: #08090e;")
         self._content_layout = QVBoxLayout(self._content_widget)
         self._content_layout.setContentsMargins(24, 20, 24, 20)
-        self._content_layout.setSpacing(16)
+        self._content_layout.setSpacing(0)
 
         root.addWidget(self._content_widget, stretch=1)
 
@@ -128,17 +128,19 @@ class BaseDetailScreen(QWidget):
         wrapper.addWidget(gauge)
         wrapper.addStretch()
         self._content_layout.addLayout(wrapper)
+        self._content_layout.addSpacing(8)
 
     def _add_value_row(self, key: str, label_text: str, value_text: str = "—") -> None:
         row = QHBoxLayout()
+        row.setContentsMargins(0, 12, 0, 12)
 
         label = QLabel(label_text)
-        label.setFont(QFont("Sans Serif", 13))
-        label.setStyleSheet("color: #90a4ae;")
+        label.setFont(QFont("Inter", 12))
+        label.setStyleSheet("color: #6b7280;")
 
         value = QLabel(value_text)
-        value.setFont(QFont("Sans Serif", 13, QFont.Bold))
-        value.setStyleSheet("color: #eceff1;")
+        value.setFont(QFont("Inter", 14, QFont.Bold))
+        value.setStyleSheet("color: #f8fafc;")
         value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
@@ -147,13 +149,19 @@ class BaseDetailScreen(QWidget):
         self._content_layout.addLayout(row)
         self._value_labels[key] = value
 
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #1f2937; border: none;")
+        self._content_layout.addWidget(sep)
+
     def _add_health_banner(self) -> None:
         self._health_label = QLabel()
-        self._health_label.setFont(QFont("Sans Serif", 13, QFont.Bold))
+        self._health_label.setFont(QFont("Inter", 13, QFont.Bold))
         self._health_label.setAlignment(Qt.AlignCenter)
         self._health_label.setMinimumHeight(40)
         self._health_label.setStyleSheet(
-            "border-radius: 8px; padding: 6px;"
+            "border-radius: 8px; padding: 6px; margin-top: 8px;"
         )
         self._content_layout.addWidget(self._health_label)
 
@@ -161,12 +169,12 @@ class BaseDetailScreen(QWidget):
         if healthy:
             self._health_label.setText("● System healthy")
             self._health_label.setStyleSheet(
-                "color: #66bb6a; background: #1b2f1f; border-radius: 8px; padding: 6px;"
+                "color: #4ade80; background: #052e16; border-radius: 8px; padding: 6px; margin-top: 8px;"
             )
         else:
             self._health_label.setText("⚠ Attention required")
             self._health_label.setStyleSheet(
-                "color: #ef5350; background: #2f1b1b; border-radius: 8px; padding: 6px;"
+                "color: #f87171; background: #2d0707; border-radius: 8px; padding: 6px; margin-top: 8px;"
             )
 
     # ------------------------------------------------------------------

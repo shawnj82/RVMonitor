@@ -67,18 +67,28 @@ class BarGauge(QWidget):
         fill_h = int(inner_h * ratio)
 
         # Background
-        painter.setBrush(QBrush(QColor("#1e2a38")))
+        painter.setBrush(QBrush(QColor("#1f2937")))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(0, 0, w, h, 6, 6)
 
-        # Filled portion (from the bottom)
+        # Filled portion (from the bottom) with rounded top cap
         if fill_h > 0:
+            top = border + (inner_h - fill_h)
+            radius = 4
+            path = QPainterPath()
+            path.moveTo(border, top + radius)
+            path.arcTo(border, top, radius * 2, radius * 2, 180, -90)
+            path.lineTo(border + inner_w - radius, top)
+            path.arcTo(border + inner_w - radius * 2, top, radius * 2, radius * 2, 90, -90)
+            path.lineTo(border + inner_w, border + inner_h)
+            path.lineTo(border, border + inner_h)
+            path.closeSubpath()
             painter.setBrush(QBrush(color))
-            painter.drawRect(border, border + (inner_h - fill_h), inner_w, fill_h)
+            painter.drawPath(path)
 
         # Border
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor("#546e7a"), border))
+        painter.setPen(QPen(QColor("#1f2937"), border))
         painter.drawRoundedRect(border // 2, border // 2, w - border, h - border, 6, 6)
 
         painter.end()
@@ -130,7 +140,7 @@ class CircleGauge(QWidget):
             color = self._fill_color
 
         # Background track
-        pen = QPen(QColor("#1e2a38"), pen_width)
+        pen = QPen(QColor("#1f2937"), pen_width)
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)

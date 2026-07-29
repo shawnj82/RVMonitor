@@ -26,7 +26,7 @@ from logic.battery_logic import get_accessory_battery_status, get_house_battery_
 from logic.propane_logic import get_propane_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
 from ui.load_screens import LoadPresetBar
-from ui.widgets import BarGauge, TileIcon
+from ui.widgets import CircleGauge, TileIcon
 
 if TYPE_CHECKING:
     from ui.navigation import Navigator
@@ -54,8 +54,11 @@ class SystemTile(QFrame):
 
         self.setObjectName("SystemTile")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(110)
+        self.setMinimumHeight(120)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setStyleSheet(
+            "QFrame#SystemTile { background: #111827; border-radius: 16px; border: 1px solid #1f2937; }"
+        )
 
         self._build_ui(title, gauge, icon)
 
@@ -65,12 +68,12 @@ class SystemTile(QFrame):
 
     def _build_ui(self, title: str, gauge: QWidget, icon: QWidget | None = None) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(6)
         layout.setAlignment(Qt.AlignHCenter)
 
         # Gauge centered at top
-        gauge.setFixedSize(44, 70)
+        gauge.setFixedSize(60, 60)
         gauge_row = QHBoxLayout()
         gauge_row.addStretch()
         gauge_row.addWidget(gauge)
@@ -84,21 +87,25 @@ class SystemTile(QFrame):
         if icon is not None:
             title_row.addWidget(icon)
         title_label = QLabel(title)
-        title_label.setFont(QFont("Sans Serif", 13, QFont.Bold))
-        title_label.setStyleSheet("color: #eceff1;")
+        title_label.setFont(QFont("Inter", 14, QFont.Bold))
+        title_label.setStyleSheet("color: #f8fafc;")
         title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         title_row.addWidget(title_label)
         layout.addLayout(title_row)
 
-        # Health indicator dot
-        self._status_dot = QLabel("●")
-        self._status_dot.setFont(QFont("Sans Serif", 12))
-        self._status_dot.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self._status_dot)
+        # Health indicator pill
+        pill_row = QHBoxLayout()
+        pill_row.addStretch()
+        self._status_dot = QLabel()
+        self._status_dot.setFixedSize(40, 8)
+        self._status_dot.setStyleSheet("background: #16a34a; border-radius: 4px;")
+        pill_row.addWidget(self._status_dot)
+        pill_row.addStretch()
+        layout.addLayout(pill_row)
 
     def set_healthy(self, healthy: bool) -> None:
-        color = "#66bb6a" if healthy else "#ef5350"
-        self._status_dot.setStyleSheet(f"color: {color};")
+        color = "#16a34a" if healthy else "#dc2626"
+        self._status_dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
 
     # ------------------------------------------------------------------
     # Interaction
@@ -116,21 +123,21 @@ class SystemTile(QFrame):
 
     def enterEvent(self, event) -> None:  # noqa: N802
         self.setStyleSheet(
-            "QFrame#SystemTile { background: #1a2736; border-radius: 10px; }"
+            "QFrame#SystemTile { background: #1a2234; border-radius: 16px; border: 1px solid #2d3f55; }"
         )
 
     def leaveEvent(self, event) -> None:  # noqa: N802
         self.setStyleSheet(
-            "QFrame#SystemTile { background: #152030; border-radius: 10px; }"
+            "QFrame#SystemTile { background: #111827; border-radius: 16px; border: 1px solid #1f2937; }"
         )
 
 
 def _section_header(text: str) -> QLabel:
     """Return a styled section-group label (e.g. 'Water', 'Battery')."""
-    label = QLabel(text)
-    label.setFont(QFont("Sans Serif", 11, QFont.Bold))
+    label = QLabel(text.upper())
+    label.setFont(QFont("Inter", 10, QFont.Bold))
     label.setStyleSheet(
-        "color: #546e7a; letter-spacing: 1px; padding: 4px 0 2px 4px;"
+        "color: #4b5563; letter-spacing: 3px; padding: 12px 0 4px 4px;"
     )
     label.setTextFormat(Qt.PlainText)
     return label
@@ -139,7 +146,7 @@ def _section_header(text: str) -> QLabel:
 def _tile_row(tiles: list[SystemTile]) -> QHBoxLayout:
     """Pack a list of tiles into an evenly-spaced horizontal row."""
     row = QHBoxLayout()
-    row.setSpacing(10)
+    row.setSpacing(12)
     for tile in tiles:
         row.addWidget(tile)
     return row
@@ -181,11 +188,11 @@ class MainScreen(QWidget):
         # Scrollable content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { background: #0d1b2a; border: none; }")
+        scroll.setStyleSheet("QScrollArea { background: #08090e; border: none; }")
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         container = QWidget()
-        container.setStyleSheet("background: #0d1b2a;")
+        container.setStyleSheet("background: #08090e;")
         content = QVBoxLayout(container)
         content.setContentsMargins(12, 14, 12, 14)
         content.setSpacing(6)
@@ -204,10 +211,9 @@ class MainScreen(QWidget):
 
         # ── Water ──────────────────────────────────────────────────────
         content.addWidget(_section_header("Water"))
-        content.addWidget(_group_divider())
 
         fresh_data = get_fresh_level()
-        fresh_gauge = BarGauge(
+        fresh_gauge = CircleGauge(
             fresh_data["capacity_gallons"], fresh_data["current_gallons"],
             fill_color=QColor("#4fc3f7"), warn_threshold=0.20, warn_high=False,
         )
@@ -218,7 +224,7 @@ class MainScreen(QWidget):
         fresh_tile.set_healthy(fresh_data["healthy"])
 
         grey_data = get_grey_level()
-        grey_gauge = BarGauge(
+        grey_gauge = CircleGauge(
             grey_data["capacity_gallons"], grey_data["current_gallons"],
             fill_color=QColor("#78909c"), warn_threshold=0.80, warn_high=True,
         )
@@ -229,7 +235,7 @@ class MainScreen(QWidget):
         grey_tile.set_healthy(grey_data["healthy"])
 
         black_data = get_black_level()
-        black_gauge = BarGauge(
+        black_gauge = CircleGauge(
             black_data["capacity_gallons"], black_data["current_gallons"],
             fill_color=QColor("#424242"), warn_threshold=0.80, warn_high=True,
         )
@@ -248,12 +254,11 @@ class MainScreen(QWidget):
         ]
 
         # ── Battery ────────────────────────────────────────────────────
-        content.addSpacing(10)
+        content.addSpacing(16)
         content.addWidget(_section_header("Battery"))
-        content.addWidget(_group_divider())
 
         house_data = get_house_battery_status()
-        house_gauge = BarGauge(
+        house_gauge = CircleGauge(
             100, house_data["percent"],
             fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
         )
@@ -264,7 +269,7 @@ class MainScreen(QWidget):
         house_tile.set_healthy(house_data["healthy"])
 
         acc_data = get_accessory_battery_status()
-        acc_gauge = BarGauge(
+        acc_gauge = CircleGauge(
             100, acc_data["percent"],
             fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
         )
@@ -282,12 +287,11 @@ class MainScreen(QWidget):
         ]
 
         # ── Propane ────────────────────────────────────────────────────
-        content.addSpacing(10)
+        content.addSpacing(16)
         content.addWidget(_section_header("Propane"))
-        content.addWidget(_group_divider())
 
         p1_data = get_propane_status(1)
-        p1_gauge = BarGauge(
+        p1_gauge = CircleGauge(
             100, p1_data["percent_full"],
             fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
         )
@@ -298,7 +302,7 @@ class MainScreen(QWidget):
         p1_tile.set_healthy(p1_data["healthy"])
 
         p2_data = get_propane_status(2)
-        p2_gauge = BarGauge(
+        p2_gauge = CircleGauge(
             100, p2_data["percent_full"],
             fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
         )
@@ -322,10 +326,6 @@ class MainScreen(QWidget):
         # Preset bar pinned to the bottom
         root.addWidget(LoadPresetBar(self._navigator, self))
 
-    # ------------------------------------------------------------------
-    # Data refresh
-    # ------------------------------------------------------------------
-
     def _refresh_data(self) -> None:
         for tile, gauge, data_fn in self._tiles:
             data = data_fn()
@@ -338,12 +338,3 @@ class MainScreen(QWidget):
                 gauge.set_value(data["percent"])
 
             tile.set_healthy(data.get("healthy", True))
-
-
-def _group_divider() -> QFrame:
-    """A subtle horizontal rule separating the section label from its tiles."""
-    line = QFrame()
-    line.setFrameShape(QFrame.HLine)
-    line.setFixedHeight(1)
-    line.setStyleSheet("background: #1e2a38; border: none;")
-    return line
