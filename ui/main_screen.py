@@ -301,12 +301,10 @@ class MainScreen(QWidget):
             TileIcon.SOLAR,
             QColor("#facc15"),
             size=102,
-            level_percent=solar_data["percent"],
-            show_percent=True,
-            warn_threshold=0.15,
-            warn_high=False,
+            show_amps=True,
         )
         solar_gauge.set_solar_mode(solar_data.get("mode", "sun"))
+        solar_gauge.set_amps(solar_data.get("amps", 0.0))
         solar_tile = SystemTile(
             "Solar", solar_gauge, nav, lambda: SolarChargerDetailScreen(nav),
         )
@@ -385,5 +383,6 @@ class MainScreen(QWidget):
                 gauge.set_trend(1 if amps > 0 else -1 if amps < 0 else 0)
                 if "mode" in data:
                     gauge.set_solar_mode(data["mode"])
+                    gauge.set_amps(amps)
 
             tile.set_healthy(data.get("healthy", True))

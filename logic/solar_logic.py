@@ -25,8 +25,10 @@ def get_solar_charger_status() -> dict:
     """
     percent = 62.0
     watts = 455.0
+    amps = round(watts / 14.4, 1)
     return {
         "watts": watts,
+        "amps": amps,
         "percent": percent,
         "mode": _mode_from_percent(percent),
         "healthy": percent >= 15.0,

@@ -189,6 +189,7 @@ class TileIcon(QWidget):
         size: int = 22,
         level_percent: float = 0.0,
         show_percent: bool = False,
+        show_amps: bool = False,
         warn_threshold: float | None = None,
         warn_high: bool = False,
         show_trend: bool = False,
@@ -199,6 +200,8 @@ class TileIcon(QWidget):
         self._color = color
         self._level_percent = max(0.0, min(level_percent, 100.0))
         self._show_percent = show_percent
+        self._show_amps = show_amps
+        self._amps = 0.0
         self._warn_threshold = warn_threshold
         self._warn_high = warn_high
         self._show_trend = show_trend
@@ -223,6 +226,10 @@ class TileIcon(QWidget):
     def set_solar_mode(self, mode: str) -> None:
         allowed = {"sun", "cloud_light", "cloud_heavy", "moon"}
         self._solar_mode = mode if mode in allowed else "sun"
+        self.update()
+
+    def set_amps(self, amps: float) -> None:
+        self._amps = amps
         self.update()
 
     def _fill_color(self) -> QColor:
@@ -293,9 +300,6 @@ class TileIcon(QWidget):
             painter.setPen(QPen(QColor("#cbd5e1"), 2))
             painter.drawPath(path)
 
-            if self._icon_type == self.SOLAR:
-                self._draw_solar_symbol(painter)
-
             if self._show_percent:
                 text_pen = QPen(QColor("#f8fafc"))
                 painter.setPen(text_pen)
@@ -303,6 +307,16 @@ class TileIcon(QWidget):
                 font = QFont("Inter", max(10, int(h * 0.18)), QFont.Bold)
                 painter.setFont(font)
                 painter.drawText(int(x), int(y), int(w), int(h), Qt.AlignCenter, f"{int(round(self._level_percent))}%")
+
+        if self._icon_type == self.SOLAR:
+            self._draw_solar_symbol(painter)
+            if self._show_amps:
+                x, y, w, h = self._icon_rect()
+                painter.setPen(QPen(QColor("#f8fafc")))
+                font = QFont("Inter", max(9, int(h * 0.17)), QFont.Bold)
+                painter.setFont(font)
+                amps_text = f"{self._amps:g}A"
+                painter.drawText(int(x), int(y + h * 0.65), int(w), int(h * 0.35), Qt.AlignCenter, amps_text)
 
         if self._show_trend and self._trend != 0:
             arrow_color = QColor("#22c55e") if self._trend > 0 else QColor("#f97316")
@@ -331,31 +345,40 @@ class TileIcon(QWidget):
     def _draw_solar_symbol(self, painter: QPainter) -> None:
         x, y, w, h = self._icon_rect()
         cx = x + (w / 2)
-        cy = y + (h * 0.34)
+        cy = y + (h * 0.38)
 
         if self._solar_mode == "sun":
             painter.setPen(QPen(QColor("#facc15"), 2))
             painter.setBrush(QBrush(QColor("#facc15")))
-            painter.drawEllipse(cx - 8, cy - 8, 16, 16)
-            for dx, dy in ((0, -14), (0, 14), (-14, 0), (14, 0), (-10, -10), (10, -10), (-10, 10), (10, 10)):
+            painter.drawEllipse(cx - 10, cy - 10, 20, 20)
+            for dx, dy in ((0, -17), (0, 17), (-17, 0), (17, 0), (-12, -12), (12, -12), (-12, 12), (12, 12)):
                 painter.drawLine(cx, cy, cx + dx, cy + dy)
             return
 
         if self._solar_mode == "moon":
             painter.setPen(Qt.NoPen)
             painter.setBrush(QBrush(QColor("#cbd5e1")))
-            painter.drawEllipse(cx - 10, cy - 10, 20, 20)
+            painter.drawEllipse(cx - 12, cy - 12, 24, 24)
             painter.setBrush(QBrush(QColor("#111827")))
-            painter.drawEllipse(cx - 4, cy - 10, 20, 20)
+            painter.drawEllipse(cx - 5, cy - 12, 24, 24)
             return
+
+        # cloud_light or cloud_heavy – optionally show partial sun behind cloud
+        if self._solar_mode == "cloud_light":
+            sun_cy = cy - 6
+            painter.setPen(QPen(QColor("#facc15"), 1.5))
+            painter.setBrush(QBrush(QColor("#facc15")))
+            painter.drawEllipse(cx - 6, sun_cy - 6, 12, 12)
+            for dx, dy in ((0, -12), (12, 0), (-8, -8), (8, -8)):
+                painter.drawLine(cx, sun_cy, cx + dx, sun_cy + dy)
 
         cloud_color = QColor("#dbeafe") if self._solar_mode == "cloud_light" else QColor("#94a3b8")
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(cloud_color))
-        painter.drawEllipse(cx - 14, cy - 4, 16, 12)
-        painter.drawEllipse(cx - 4, cy - 9, 18, 14)
-        painter.drawEllipse(cx + 8, cy - 4, 14, 11)
-        painter.drawRoundedRect(cx - 16, cy + 2, 36, 10, 5, 5)
+        painter.drawEllipse(cx - 16, cy - 4, 18, 14)
+        painter.drawEllipse(cx - 6, cy - 11, 20, 16)
+        painter.drawEllipse(cx + 8, cy - 4, 16, 13)
+        painter.drawRoundedRect(cx - 18, cy + 4, 42, 11, 5, 5)
 
     def _path_water_drop(self) -> QPainterPath:
         """Wide-bottom water droplet."""
@@ -408,8 +431,5 @@ class TileIcon(QWidget):
         return path
 
     def _path_solar(self) -> QPainterPath:
-        """Rounded panel for solar charger status."""
-        x, y, w, h = self._icon_rect()
-        path = QPainterPath()
-        path.addRoundedRect(x + 1, y + 1, w - 2, h - 2, 10, 10)
-        return path
+        """Solar tile uses no background box – symbol and amps text are drawn directly."""
+        return QPainterPath()
