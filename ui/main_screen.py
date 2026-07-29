@@ -2,7 +2,7 @@
 Main dashboard screen – tappable tiles for every RV system.
 
 Layout is optimised for a 600 × 1024 vertical touchscreen.
-Tiles are grouped by system: Water, Battery, Propane.
+Tiles are grouped by system: Water, Power, Propane.
 Each group has a section header; tiles show a short name only.
 """
 
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from logic.battery_logic import get_accessory_battery_status, get_house_battery_status
 from logic.propane_logic import get_propane_status
+from logic.solar_logic import get_solar_charger_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
 from ui.load_screens import LoadPresetBar
 from ui.widgets import TileIcon
@@ -150,7 +151,7 @@ class MainScreen(QWidget):
 
     Groups:
         Water    – Fresh | Grey | Black  (3 tiles across)
-        Battery  – House | Accessory     (2 tiles across)
+        Power    – House | Accessory | Solar (3 tiles across)
         Propane  – Tank 1 | Tank 2       (2 tiles across)
     """
 
@@ -196,6 +197,7 @@ class MainScreen(QWidget):
             GreyTankDetailScreen,
             HouseBatteryDetailScreen,
             PropaneDetailScreen,
+            SolarChargerDetailScreen,
         )
 
         nav = self._navigator
@@ -256,9 +258,9 @@ class MainScreen(QWidget):
             (black_tile, black_gauge, get_black_level),
         ]
 
-        # ── Battery ────────────────────────────────────────────────────
+        # ── Power ──────────────────────────────────────────────────────
         content.addSpacing(16)
-        content.addWidget(_section_header("Battery"))
+        content.addWidget(_section_header("Power"))
 
         house_data = get_house_battery_status()
         house_gauge = TileIcon(
@@ -294,11 +296,28 @@ class MainScreen(QWidget):
         )
         acc_tile.set_healthy(acc_data["healthy"])
 
-        content.addLayout(_tile_row([house_tile, acc_tile]))
+        solar_data = get_solar_charger_status()
+        solar_gauge = TileIcon(
+            TileIcon.SOLAR,
+            QColor("#facc15"),
+            size=102,
+            level_percent=solar_data["percent"],
+            show_percent=True,
+            warn_threshold=0.15,
+            warn_high=False,
+        )
+        solar_gauge.set_solar_mode(solar_data.get("mode", "sun"))
+        solar_tile = SystemTile(
+            "Solar", solar_gauge, nav, lambda: SolarChargerDetailScreen(nav),
+        )
+        solar_tile.set_healthy(solar_data["healthy"])
+
+        content.addLayout(_tile_row([house_tile, acc_tile, solar_tile]))
 
         self._tiles += [
             (house_tile, house_gauge, get_house_battery_status),
             (acc_tile, acc_gauge, get_accessory_battery_status),
+            (solar_tile, solar_gauge, get_solar_charger_status),
         ]
 
         # ── Propane ────────────────────────────────────────────────────
@@ -364,5 +383,7 @@ class MainScreen(QWidget):
                 gauge.set_level(data["percent"])
                 amps = data.get("amps", 0.0)
                 gauge.set_trend(1 if amps > 0 else -1 if amps < 0 else 0)
+                if "mode" in data:
+                    gauge.set_solar_mode(data["mode"])
 
             tile.set_healthy(data.get("healthy", True))

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from logic.battery_logic import get_accessory_battery_status, get_house_battery_status
 from logic.propane_logic import get_propane_status
+from logic.solar_logic import get_solar_charger_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
 from ui.widgets import BarGauge, CircleGauge
 
@@ -369,6 +370,48 @@ class AccessoryBatteryDetailScreen(BaseDetailScreen):
         amps = data["amps"]
         sign = "+" if amps >= 0 else ""
         self._value_labels["amps"].setText(f"{sign}{amps:.1f} A")
+        self._set_health(data["healthy"])
+
+
+# ---------------------------------------------------------------------------
+# Solar Charger
+# ---------------------------------------------------------------------------
+
+
+class SolarChargerDetailScreen(BaseDetailScreen):
+    def __init__(self, navigator: "Navigator", parent: QWidget | None = None) -> None:
+        self._gauge: CircleGauge | None = None
+        super().__init__(navigator, "Solar Charger", parent)
+
+    def _build_content(self) -> None:
+        data = get_solar_charger_status()
+        self._gauge = CircleGauge(
+            100,
+            data["percent"],
+            fill_color=QColor("#facc15"),
+            warn_threshold=0.15,
+            warn_high=False,
+        )
+        self._add_gauge(self._gauge)
+        self._add_value_row("watts", "Output")
+        self._add_value_row("percent", "Production Level")
+        self._add_value_row("mode", "Sky State")
+        self._add_health_banner()
+        self._content_layout.addStretch()
+
+    def _refresh_values(self) -> None:
+        data = get_solar_charger_status()
+        if self._gauge:
+            self._gauge.set_value(data["percent"])
+        self._value_labels["watts"].setText(f"{data['watts']:.0f} W")
+        self._value_labels["percent"].setText(f"{data['percent']:.1f} %")
+        mode_labels = {
+            "sun": "Sun / Good",
+            "cloud_light": "Partly Cloudy",
+            "cloud_heavy": "Mostly Cloudy",
+            "moon": "Night / Low",
+        }
+        self._value_labels["mode"].setText(mode_labels.get(data["mode"], data["mode"]))
         self._set_health(data["healthy"])
 
 

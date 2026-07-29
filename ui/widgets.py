@@ -172,12 +172,14 @@ class TileIcon(QWidget):
     WASTE_TANK   – vertical cylinder; use for grey/black waste tanks.
     BATTERY      – car-battery silhouette with two terminals.
     PROPANE_TANK – upright rounded cylinder with valve; use for propane tiles.
+    SOLAR        – rounded solar status panel with sun/moon/cloud symbol.
     """
 
     WATER_DROP = "water_drop"
     WASTE_TANK = "waste_tank"
     BATTERY = "battery"
     PROPANE_TANK = "propane_tank"
+    SOLAR = "solar"
 
     def __init__(
         self,
@@ -201,6 +203,7 @@ class TileIcon(QWidget):
         self._warn_high = warn_high
         self._show_trend = show_trend
         self._trend = 0
+        self._solar_mode = "sun"
         self.setFixedSize(size, size)
 
     def set_level(self, level_percent: float) -> None:
@@ -215,6 +218,11 @@ class TileIcon(QWidget):
 
     def set_trend(self, direction: int) -> None:
         self._trend = 1 if direction > 0 else -1 if direction < 0 else 0
+        self.update()
+
+    def set_solar_mode(self, mode: str) -> None:
+        allowed = {"sun", "cloud_light", "cloud_heavy", "moon"}
+        self._solar_mode = mode if mode in allowed else "sun"
         self.update()
 
     def _fill_color(self) -> QColor:
@@ -285,6 +293,9 @@ class TileIcon(QWidget):
             painter.setPen(QPen(QColor("#cbd5e1"), 2))
             painter.drawPath(path)
 
+            if self._icon_type == self.SOLAR:
+                self._draw_solar_symbol(painter)
+
             if self._show_percent:
                 text_pen = QPen(QColor("#f8fafc"))
                 painter.setPen(text_pen)
@@ -316,6 +327,35 @@ class TileIcon(QWidget):
     # ------------------------------------------------------------------
     # Individual icon paths
     # ------------------------------------------------------------------
+
+    def _draw_solar_symbol(self, painter: QPainter) -> None:
+        x, y, w, h = self._icon_rect()
+        cx = x + (w / 2)
+        cy = y + (h * 0.34)
+
+        if self._solar_mode == "sun":
+            painter.setPen(QPen(QColor("#facc15"), 2))
+            painter.setBrush(QBrush(QColor("#facc15")))
+            painter.drawEllipse(cx - 8, cy - 8, 16, 16)
+            for dx, dy in ((0, -14), (0, 14), (-14, 0), (14, 0), (-10, -10), (10, -10), (-10, 10), (10, 10)):
+                painter.drawLine(cx, cy, cx + dx, cy + dy)
+            return
+
+        if self._solar_mode == "moon":
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor("#cbd5e1")))
+            painter.drawEllipse(cx - 10, cy - 10, 20, 20)
+            painter.setBrush(QBrush(QColor("#111827")))
+            painter.drawEllipse(cx - 4, cy - 10, 20, 20)
+            return
+
+        cloud_color = QColor("#dbeafe") if self._solar_mode == "cloud_light" else QColor("#94a3b8")
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(cloud_color))
+        painter.drawEllipse(cx - 14, cy - 4, 16, 12)
+        painter.drawEllipse(cx - 4, cy - 9, 18, 14)
+        painter.drawEllipse(cx + 8, cy - 4, 14, 11)
+        painter.drawRoundedRect(cx - 16, cy + 2, 36, 10, 5, 5)
 
     def _path_water_drop(self) -> QPainterPath:
         """Wide-bottom water droplet."""
@@ -365,4 +405,11 @@ class TileIcon(QWidget):
         path = QPainterPath()
         path.addRoundedRect((x + w / 2) - (valve_w / 2), y + 1, valve_w, valve_h, 2, 2)
         path.addRoundedRect(tank_x, tank_top, tank_w, tank_h, tank_w / 2, tank_w / 2)
+        return path
+
+    def _path_solar(self) -> QPainterPath:
+        """Rounded panel for solar charger status."""
+        x, y, w, h = self._icon_rect()
+        path = QPainterPath()
+        path.addRoundedRect(x + 1, y + 1, w - 2, h - 2, 10, 10)
         return path
