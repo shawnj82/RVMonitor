@@ -26,7 +26,7 @@ from logic.battery_logic import get_accessory_battery_status, get_house_battery_
 from logic.propane_logic import get_propane_status
 from logic.tank_logic import get_black_level, get_fresh_level, get_grey_level
 from ui.load_screens import LoadPresetBar
-from ui.widgets import CircleGauge, TileIcon
+from ui.widgets import TileIcon
 
 if TYPE_CHECKING:
     from ui.navigation import Navigator
@@ -36,7 +36,7 @@ REFRESH_MS = 5_000
 
 
 class SystemTile(QFrame):
-    """A single tappable dashboard tile showing a short label and gauge."""
+    """A single tappable dashboard tile showing label and icon gauge."""
 
     def __init__(
         self,
@@ -44,7 +44,6 @@ class SystemTile(QFrame):
         gauge: QWidget,
         navigator: "Navigator",
         detail_screen_factory,
-        icon: QWidget | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -54,44 +53,36 @@ class SystemTile(QFrame):
 
         self.setObjectName("SystemTile")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(210)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             "QFrame#SystemTile { background: #111827; border-radius: 16px; border: 1px solid #1f2937; }"
         )
 
-        self._build_ui(title, gauge, icon)
+        self._build_ui(title, gauge)
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
 
-    def _build_ui(self, title: str, gauge: QWidget, icon: QWidget | None = None) -> None:
+    def _build_ui(self, title: str, gauge: QWidget) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.setAlignment(Qt.AlignHCenter)
 
-        # Gauge centered at top
-        gauge.setFixedSize(60, 60)
-        gauge_row = QHBoxLayout()
-        gauge_row.addStretch()
-        gauge_row.addWidget(gauge)
-        gauge_row.addStretch()
-        layout.addLayout(gauge_row)
-
-        # Icon + short label row
-        title_row = QHBoxLayout()
-        title_row.setSpacing(4)
-        title_row.setAlignment(Qt.AlignHCenter)
-        if icon is not None:
-            title_row.addWidget(icon)
+        # Name at the top
         title_label = QLabel(title)
-        title_label.setFont(QFont("Inter", 14, QFont.Bold))
+        title_label.setFont(QFont("Inter", 13, QFont.Bold))
         title_label.setStyleSheet("color: #f8fafc;")
-        title_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        title_row.addWidget(title_label)
-        layout.addLayout(title_row)
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+
+        # Large status icon gauge centered below
+        gauge_row = QHBoxLayout()
+        gauge_row.setAlignment(Qt.AlignHCenter)
+        gauge_row.addWidget(gauge)
+        layout.addLayout(gauge_row)
 
         # Health indicator pill
         pill_row = QHBoxLayout()
@@ -166,7 +157,7 @@ class MainScreen(QWidget):
     def __init__(self, navigator: "Navigator", parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._navigator = navigator
-        self._tiles: list[tuple[SystemTile, BarGauge, callable]] = []
+        self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
 
         self._build_ui()
         self._refresh_data()
@@ -213,35 +204,47 @@ class MainScreen(QWidget):
         content.addWidget(_section_header("Water"))
 
         fresh_data = get_fresh_level()
-        fresh_gauge = CircleGauge(
-            fresh_data["capacity_gallons"], fresh_data["current_gallons"],
-            fill_color=QColor("#4fc3f7"), warn_threshold=0.20, warn_high=False,
+        fresh_gauge = TileIcon(
+            TileIcon.WATER_DROP,
+            QColor("#4fc3f7"),
+            size=102,
+            level_percent=(fresh_data["current_gallons"] / max(fresh_data["capacity_gallons"], 1.0)) * 100.0,
+            show_percent=True,
+            warn_threshold=0.20,
+            warn_high=False,
         )
         fresh_tile = SystemTile(
             "Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav),
-            icon=TileIcon(TileIcon.WATER_DROP, QColor("#4fc3f7")),
         )
         fresh_tile.set_healthy(fresh_data["healthy"])
 
         grey_data = get_grey_level()
-        grey_gauge = CircleGauge(
-            grey_data["capacity_gallons"], grey_data["current_gallons"],
-            fill_color=QColor("#78909c"), warn_threshold=0.80, warn_high=True,
+        grey_gauge = TileIcon(
+            TileIcon.WASTE_TANK,
+            QColor("#78909c"),
+            size=102,
+            level_percent=(grey_data["current_gallons"] / max(grey_data["capacity_gallons"], 1.0)) * 100.0,
+            show_percent=True,
+            warn_threshold=0.80,
+            warn_high=True,
         )
         grey_tile = SystemTile(
             "Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav),
-            icon=TileIcon(TileIcon.WASTE_TANK, QColor("#78909c")),
         )
         grey_tile.set_healthy(grey_data["healthy"])
 
         black_data = get_black_level()
-        black_gauge = CircleGauge(
-            black_data["capacity_gallons"], black_data["current_gallons"],
-            fill_color=QColor("#424242"), warn_threshold=0.80, warn_high=True,
+        black_gauge = TileIcon(
+            TileIcon.WASTE_TANK,
+            QColor("#607d8b"),
+            size=102,
+            level_percent=(black_data["current_gallons"] / max(black_data["capacity_gallons"], 1.0)) * 100.0,
+            show_percent=True,
+            warn_threshold=0.80,
+            warn_high=True,
         )
         black_tile = SystemTile(
             "Black", black_gauge, nav, lambda: BlackTankDetailScreen(nav),
-            icon=TileIcon(TileIcon.WASTE_TANK, QColor("#607d8b")),
         )
         black_tile.set_healthy(black_data["healthy"])
 
@@ -258,24 +261,36 @@ class MainScreen(QWidget):
         content.addWidget(_section_header("Battery"))
 
         house_data = get_house_battery_status()
-        house_gauge = CircleGauge(
-            100, house_data["percent"],
-            fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
+        house_gauge = TileIcon(
+            TileIcon.BATTERY,
+            QColor("#aed581"),
+            size=102,
+            level_percent=house_data["percent"],
+            show_percent=True,
+            warn_threshold=0.20,
+            warn_high=False,
+            show_trend=True,
         )
+        house_gauge.set_trend(1 if house_data.get("amps", 0.0) > 0 else -1 if house_data.get("amps", 0.0) < 0 else 0)
         house_tile = SystemTile(
             "House", house_gauge, nav, lambda: HouseBatteryDetailScreen(nav),
-            icon=TileIcon(TileIcon.BATTERY, QColor("#aed581")),
         )
         house_tile.set_healthy(house_data["healthy"])
 
         acc_data = get_accessory_battery_status()
-        acc_gauge = CircleGauge(
-            100, acc_data["percent"],
-            fill_color=QColor("#aed581"), warn_threshold=0.20, warn_high=False,
+        acc_gauge = TileIcon(
+            TileIcon.BATTERY,
+            QColor("#aed581"),
+            size=102,
+            level_percent=acc_data["percent"],
+            show_percent=True,
+            warn_threshold=0.20,
+            warn_high=False,
+            show_trend=True,
         )
+        acc_gauge.set_trend(1 if acc_data.get("amps", 0.0) > 0 else -1 if acc_data.get("amps", 0.0) < 0 else 0)
         acc_tile = SystemTile(
             "Accessory", acc_gauge, nav, lambda: AccessoryBatteryDetailScreen(nav),
-            icon=TileIcon(TileIcon.BATTERY, QColor("#aed581")),
         )
         acc_tile.set_healthy(acc_data["healthy"])
 
@@ -291,24 +306,32 @@ class MainScreen(QWidget):
         content.addWidget(_section_header("Propane"))
 
         p1_data = get_propane_status(1)
-        p1_gauge = CircleGauge(
-            100, p1_data["percent_full"],
-            fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
+        p1_gauge = TileIcon(
+            TileIcon.PROPANE_TANK,
+            QColor("#ffb74d"),
+            size=102,
+            level_percent=p1_data["percent_full"],
+            show_percent=True,
+            warn_threshold=0.10,
+            warn_high=False,
         )
         p1_tile = SystemTile(
             "Tank 1", p1_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=1),
-            icon=TileIcon(TileIcon.PROPANE_TANK, QColor("#ffb74d")),
         )
         p1_tile.set_healthy(p1_data["healthy"])
 
         p2_data = get_propane_status(2)
-        p2_gauge = CircleGauge(
-            100, p2_data["percent_full"],
-            fill_color=QColor("#ffb74d"), warn_threshold=0.10, warn_high=False,
+        p2_gauge = TileIcon(
+            TileIcon.PROPANE_TANK,
+            QColor("#ffb74d"),
+            size=102,
+            level_percent=p2_data["percent_full"],
+            show_percent=True,
+            warn_threshold=0.10,
+            warn_high=False,
         )
         p2_tile = SystemTile(
             "Tank 2", p2_gauge, nav, lambda: PropaneDetailScreen(nav, tank_number=2),
-            icon=TileIcon(TileIcon.PROPANE_TANK, QColor("#ffb74d")),
         )
         p2_tile.set_healthy(p2_data["healthy"])
 
@@ -331,10 +354,15 @@ class MainScreen(QWidget):
             data = data_fn()
 
             if "current_gallons" in data:
-                gauge.set_value(data["current_gallons"])
+                level = (
+                    data["current_gallons"] / max(data.get("capacity_gallons", 1.0), 1.0)
+                ) * 100.0
+                gauge.set_level(level)
             elif "percent_full" in data:
-                gauge.set_value(data["percent_full"])
+                gauge.set_level(data["percent_full"])
             elif "percent" in data:
-                gauge.set_value(data["percent"])
+                gauge.set_level(data["percent"])
+                amps = data.get("amps", 0.0)
+                gauge.set_trend(1 if amps > 0 else -1 if amps < 0 else 0)
 
             tile.set_healthy(data.get("healthy", True))

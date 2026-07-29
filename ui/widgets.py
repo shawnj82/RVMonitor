@@ -164,13 +164,13 @@ class CircleGauge(QWidget):
 
 class TileIcon(QWidget):
     """
-    Small decorative icon drawn with QPainter to identify each system tile.
+    Large icon gauge drawn with QPainter for each system tile.
 
     Icon types
     ----------
-    WATER_DROP   – teardrop shape; use for fresh-water tiles.
+    WATER_DROP   – wide-bottom droplet; use for fresh-water tiles.
     WASTE_TANK   – vertical cylinder; use for grey/black waste tanks.
-    BATTERY      – rectangle body with top nub; use for battery tiles.
+    BATTERY      – car-battery silhouette with two terminals.
     PROPANE_TANK – upright rounded cylinder with valve; use for propane tiles.
     """
 
@@ -183,113 +183,173 @@ class TileIcon(QWidget):
         self,
         icon_type: str,
         color: QColor,
+        *,
+        size: int = 22,
+        level_percent: float = 0.0,
+        show_percent: bool = False,
+        warn_threshold: float | None = None,
+        warn_high: bool = False,
+        show_trend: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._icon_type = icon_type
         self._color = color
-        self.setFixedSize(22, 22)
+        self._level_percent = max(0.0, min(level_percent, 100.0))
+        self._show_percent = show_percent
+        self._warn_threshold = warn_threshold
+        self._warn_high = warn_high
+        self._show_trend = show_trend
+        self._trend = 0
+        self.setFixedSize(size, size)
+
+    def set_level(self, level_percent: float) -> None:
+        self._level_percent = max(0.0, min(level_percent, 100.0))
+        self.update()
+
+    def set_value(self, value: float, capacity: float = 100.0) -> None:
+        if capacity <= 0:
+            self.set_level(0.0)
+            return
+        self.set_level((value / capacity) * 100.0)
+
+    def set_trend(self, direction: int) -> None:
+        self._trend = 1 if direction > 0 else -1 if direction < 0 else 0
+        self.update()
+
+    def _fill_color(self) -> QColor:
+        ratio = self._level_percent / 100.0
+        if self._warn_threshold is None:
+            return self._color
+        if self._warn_high and ratio >= self._warn_threshold:
+            return QColor("#ef5350")
+        if not self._warn_high and ratio <= self._warn_threshold:
+            return QColor("#ffa726")
+        return self._color
+
+    def _icon_rect(self):
+        margin = 6.0
+        right_margin = 16.0 if self._show_trend else 6.0
+        return (
+            margin,
+            margin,
+            max(12.0, self.width() - margin - right_margin),
+            max(12.0, self.height() - margin * 2),
+        )
+
+    def _icon_path(self) -> QPainterPath:
+        draw_fn = getattr(self, f"_path_{self._icon_type}", None)
+        if draw_fn is None:
+            return QPainterPath()
+        return draw_fn()
 
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        draw_fn = getattr(self, f"_draw_{self._icon_type}", None)
-        if draw_fn is not None:
-            draw_fn(painter)
+        path = self._icon_path()
+
+        if not path.isEmpty():
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor("#1f2937")))
+            painter.drawPath(path)
+
+            ratio = self._level_percent / 100.0
+            if ratio > 0:
+                x, y, w, h = self._icon_rect()
+                top = y + (1.0 - ratio) * h
+                painter.save()
+                painter.setClipPath(path)
+                painter.setBrush(QBrush(self._fill_color()))
+                painter.drawRect(x, top, w, (y + h) - top + 1)
+                painter.restore()
+
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#cbd5e1"), 2))
+            painter.drawPath(path)
+
+            if self._show_percent:
+                text_pen = QPen(QColor("#f8fafc"))
+                painter.setPen(text_pen)
+                x, y, w, h = self._icon_rect()
+                font = QFont("Inter", max(10, int(h * 0.18)), QFont.Bold)
+                painter.setFont(font)
+                painter.drawText(int(x), int(y), int(w), int(h), Qt.AlignCenter, f"{int(round(self._level_percent))}%")
+
+        if self._show_trend and self._trend != 0:
+            arrow_color = QColor("#22c55e") if self._trend > 0 else QColor("#f97316")
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(arrow_color))
+            cx = self.width() - 8
+            cy = self.height() // 2
+            arrow = QPainterPath()
+            if self._trend > 0:
+                arrow.moveTo(cx, cy - 8)
+                arrow.lineTo(cx - 5, cy + 2)
+                arrow.lineTo(cx + 5, cy + 2)
+            else:
+                arrow.moveTo(cx, cy + 8)
+                arrow.lineTo(cx - 5, cy - 2)
+                arrow.lineTo(cx + 5, cy - 2)
+            arrow.closeSubpath()
+            painter.drawPath(arrow)
+
         painter.end()
 
     # ------------------------------------------------------------------
-    # Individual icon painters
+    # Individual icon paths
     # ------------------------------------------------------------------
 
-    def _draw_water_drop(self, painter: QPainter) -> None:
-        """Classic teardrop: point at top, round bulge at bottom."""
-        w, h = self.width(), self.height()
-        cx = w / 2
+    def _path_water_drop(self) -> QPainterPath:
+        """Wide-bottom water droplet."""
+        x, y, w, h = self._icon_rect()
+        cx = x + (w / 2)
         path = QPainterPath()
-        path.moveTo(cx, 1)
-        path.cubicTo(cx + w * 0.45, h * 0.35, cx + w * 0.45, h * 0.65, cx, h - 1)
-        path.cubicTo(cx - w * 0.45, h * 0.65, cx - w * 0.45, h * 0.35, cx, 1)
-        painter.setBrush(QBrush(self._color))
-        painter.setPen(Qt.NoPen)
-        painter.drawPath(path)
+        path.moveTo(cx, y + 1)
+        path.cubicTo(cx + w * 0.50, y + h * 0.33, cx + w * 0.46, y + h * 0.84, cx, y + h - 1)
+        path.cubicTo(cx - w * 0.46, y + h * 0.84, cx - w * 0.50, y + h * 0.33, cx, y + 1)
+        return path
 
-    def _draw_waste_tank(self, painter: QPainter) -> None:
+    def _path_waste_tank(self) -> QPainterPath:
         """Vertical cylinder silhouette representing a waste tank."""
-        w, h = self.width(), self.height()
-        px = int(w * 0.15)
-        eh = int(h * 0.22)
-        body_top = eh // 2
-        body_h = h - eh
+        x, y, w, h = self._icon_rect()
+        px = w * 0.16
+        tank_x = x + px
+        tank_w = w - (2 * px)
+        top_y = y + h * 0.12
+        bottom_y = y + h * 0.88
+        path = QPainterPath()
+        path.addRoundedRect(tank_x, top_y, tank_w, bottom_y - top_y, tank_w * 0.22, tank_w * 0.22)
+        return path
 
-        painter.setPen(Qt.NoPen)
+    def _path_battery(self) -> QPainterPath:
+        """Car battery with two top terminals."""
+        x, y, w, h = self._icon_rect()
+        body_top = y + h * 0.28
+        body_h = h * 0.66
+        body_x = x + 1
+        body_w = w - 2
+        term_w = max(4.0, body_w * 0.16)
+        term_h = max(4.0, h * 0.13)
+        left_term_x = body_x + body_w * 0.22 - (term_w / 2)
+        right_term_x = body_x + body_w * 0.78 - (term_w / 2)
 
-        # Cylinder body
-        painter.setBrush(QBrush(self._color))
-        painter.drawRect(px, body_top, w - 2 * px, body_h)
+        path = QPainterPath()
+        path.addRoundedRect(body_x, body_top, body_w, body_h, 6, 6)
+        path.addRoundedRect(left_term_x, y + 2, term_w, term_h, 2, 2)
+        path.addRoundedRect(right_term_x, y + 2, term_w, term_h, 2, 2)
+        return path
 
-        # Top ellipse
-        painter.setBrush(QBrush(self._color.lighter(130)))
-        painter.drawEllipse(px, 0, w - 2 * px, eh)
-
-        # Bottom ellipse (slightly darker to give depth)
-        painter.setBrush(QBrush(self._color.darker(130)))
-        painter.drawEllipse(px, h - eh, w - 2 * px, eh)
-
-    def _draw_battery(self, painter: QPainter) -> None:
-        """Rectangle body with a small top nub; internal cell dividers."""
-        w, h = self.width(), self.height()
-        nub_w = max(4, w // 3)
-        nub_h = max(2, int(h * 0.12))
-        body_top = nub_h + 1
-        body_h = h - body_top - 1
-
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(self._color))
-
-        # Nub (top, centered)
-        painter.drawRoundedRect((w - nub_w) // 2, 1, nub_w, nub_h, 2, 2)
-
-        # Body
-        painter.drawRoundedRect(1, body_top, w - 2, body_h, 3, 3)
-
-        # Cell dividers drawn over the body in the background colour
-        painter.setPen(QPen(QColor("#0d1b2a"), 1))
-        third = body_h // 3
-        for i in (1, 2):
-            y = body_top + third * i
-            painter.drawLine(2, y, w - 2, y)
-
-    def _draw_propane_tank(self, painter: QPainter) -> None:
+    def _path_propane_tank(self) -> QPainterPath:
         """Upright rounded cylinder with a valve nub at the top."""
-        w, h = self.width(), self.height()
-        px = int(w * 0.18)
-        valve_h = max(2, int(h * 0.14))
-        valve_w = max(3, int(w * 0.22))
-        tank_top = valve_h + 1
-        tank_h = h - tank_top - 1
-        tank_x = px
-        tank_w = w - 2 * px
-
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(self._color))
-
-        # Valve nub at top center
-        painter.drawRoundedRect((w - valve_w) // 2, 0, valve_w, valve_h + 2, 2, 2)
-
-        # Tank body – tall rounded rectangle
-        painter.drawRoundedRect(tank_x, tank_top, tank_w, tank_h, tank_w // 2, tank_w // 2)
-
-        # Subtle highlight stripe
-        highlight = self._color.lighter(150)
-        highlight.setAlpha(80)
-        painter.setBrush(QBrush(highlight))
-        stripe_w = max(2, tank_w // 4)
-        painter.drawRoundedRect(
-            tank_x + (tank_w - stripe_w) // 2,
-            tank_top + 3,
-            stripe_w,
-            tank_h - 6,
-            stripe_w // 2,
-            stripe_w // 2,
-        )
+        x, y, w, h = self._icon_rect()
+        px = w * 0.2
+        valve_h = max(4.0, h * 0.12)
+        valve_w = max(6.0, w * 0.24)
+        tank_top = y + valve_h + 2
+        tank_h = h - valve_h - 4
+        tank_x = x + px
+        tank_w = w - (2 * px)
+        path = QPainterPath()
+        path.addRoundedRect((x + w / 2) - (valve_w / 2), y + 1, valve_w, valve_h, 2, 2)
+        path.addRoundedRect(tank_x, tank_top, tank_w, tank_h, tank_w / 2, tank_w / 2)
+        return path
