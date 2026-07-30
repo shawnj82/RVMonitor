@@ -162,6 +162,72 @@ class MqttFlowMeterClient:
         self._mqtt.publish(topic, payload)
         logger.info("MqttFlowMeterClient: relay command '%s' → %s", payload, topic)
 
+    def add_sensor_module(self, sensor_id: str, config: dict) -> None:
+        """
+        Register a new sensor module and subscribe to its MQTT topics.
+
+        If the module already exists its configuration is updated in place
+        (equivalent to calling ``update_sensor_module``).
+
+        Args:
+            sensor_id: The SENSOR_ID of the ESP32 module (must match the
+                       value flashed onto the device).
+            config:    Module configuration dict (same shape as
+                       ``SENSOR_MODULES`` entries in ``sensor_config.py``).
+        """
+        with self._lock:
+            self._sensor_modules[sensor_id] = config
+            if sensor_id not in self._state:
+                self._state[sensor_id] = {
+                    "flow1": {"gpm": 0.0, "total_gallons": 0.0},
+                    "flow2": {"gpm": 0.0, "total_gallons": 0.0},
+                    "relay": {"state": "off"},
+                }
+
+        if self._connected:
+            base = f"rv/flowmeter/{sensor_id}"
+            self._mqtt.subscribe(f"{base}/flow1")
+            self._mqtt.subscribe(f"{base}/flow2")
+            self._mqtt.subscribe(f"{base}/relay")
+            logger.info("MqttFlowMeterClient: added module %s and subscribed", sensor_id)
+        else:
+            logger.info("MqttFlowMeterClient: registered module %s (will subscribe on next connect)", sensor_id)
+
+    def update_sensor_module(self, sensor_id: str, config: dict) -> None:
+        """
+        Update the configuration for an existing sensor module.
+
+        The MQTT subscriptions are not changed because the topics depend only
+        on the sensor ID, which does not change during an update.
+
+        Args:
+            sensor_id: The SENSOR_ID to update.
+            config:    New configuration dict.
+        """
+        with self._lock:
+            self._sensor_modules[sensor_id] = config
+        logger.info("MqttFlowMeterClient: updated config for module %s", sensor_id)
+
+    def remove_sensor_module(self, sensor_id: str) -> None:
+        """
+        Deregister a sensor module and unsubscribe from its MQTT topics.
+
+        Args:
+            sensor_id: The SENSOR_ID of the module to remove.
+        """
+        with self._lock:
+            self._sensor_modules.pop(sensor_id, None)
+            self._state.pop(sensor_id, None)
+
+        if self._connected:
+            base = f"rv/flowmeter/{sensor_id}"
+            self._mqtt.unsubscribe(f"{base}/flow1")
+            self._mqtt.unsubscribe(f"{base}/flow2")
+            self._mqtt.unsubscribe(f"{base}/relay")
+            logger.info("MqttFlowMeterClient: removed module %s and unsubscribed", sensor_id)
+        else:
+            logger.info("MqttFlowMeterClient: deregistered module %s", sensor_id)
+
     # ------------------------------------------------------------------
     # MQTT callbacks
     # ------------------------------------------------------------------

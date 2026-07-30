@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -30,6 +31,7 @@ from ui.load_screens import LoadPresetBar
 from ui.widgets import TileIcon
 
 if TYPE_CHECKING:
+    from sensors.sensor_store import SensorStore
     from ui.navigation import Navigator
 
 # Refresh interval for live data (ms)
@@ -181,13 +183,23 @@ class MainScreen(QWidget):
         Water    – Fresh | Grey | Black  (3 tiles across)
         Power    – House | Accessory | Solar (3 tiles across)
         Propane  – Tank 1 | Tank 2       (2 tiles across)
+
+    A compact top header contains a ⚙ Sensors button for navigating to the
+    sensor node configuration screen.
     """
 
-    def __init__(self, navigator: "Navigator", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        navigator: "Navigator",
+        store: "SensorStore | None" = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._navigator = navigator
+        self._store = store
         self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
         self._section_days: list[tuple[QLabel, callable]] = []
+        self._sensor_list_screen = None
 
         self._build_ui()
         self._refresh_data()
@@ -205,6 +217,16 @@ class MainScreen(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # Top header bar with Sensors button
+        root.addWidget(self._build_header())
+
+        # Divider
+        div = QFrame()
+        div.setFrameShape(QFrame.HLine)
+        div.setFixedHeight(1)
+        div.setStyleSheet("background: #1f2937; border: none;")
+        root.addWidget(div)
 
         # Scrollable content
         scroll = QScrollArea()
@@ -430,3 +452,42 @@ class MainScreen(QWidget):
 
         for label, days_fn in self._section_days:
             _update_days_label(label, days_fn())
+
+    # ------------------------------------------------------------------
+    # Header
+    # ------------------------------------------------------------------
+
+    def _build_header(self) -> QWidget:
+        """Return a 48-px top bar with the app title and Sensors button."""
+        header = QWidget()
+        header.setFixedHeight(48)
+        header.setStyleSheet("background: #08090e;")
+
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(14, 0, 10, 0)
+
+        title = QLabel("RV Monitor")
+        title.setFont(QFont("Inter", 15, QFont.Bold))
+        title.setStyleSheet("color: #f8fafc;")
+        layout.addWidget(title, stretch=1)
+
+        sensors_btn = QPushButton("⚙ Sensors")
+        sensors_btn.setFont(QFont("Inter", 12))
+        sensors_btn.setStyleSheet(
+            "QPushButton { color: #93c5fd; background: transparent; border: none; padding: 4px 8px; }"
+            "QPushButton:pressed { color: #60a5fa; }"
+        )
+        sensors_btn.setCursor(Qt.PointingHandCursor)
+        sensors_btn.clicked.connect(self._on_sensors_nav)
+        layout.addWidget(sensors_btn)
+
+        return header
+
+    def _on_sensors_nav(self) -> None:
+        """Navigate to the sensor configuration screen."""
+        if self._store is None:
+            return
+        if self._sensor_list_screen is None:
+            from ui.sensor_screens import SensorListScreen  # noqa: PLC0415
+            self._sensor_list_screen = SensorListScreen(self._navigator, self._store)
+        self._navigator.push(self._sensor_list_screen)
