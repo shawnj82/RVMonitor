@@ -3,15 +3,17 @@ Tank logic for fresh, grey, and black water tanks.
 
 Placeholder functions return mock values until real sensors are connected.
 Flow logic:
-  - Fresh water outflow measured by ESP32 flow meter.
-  - Fresh outflow is split equally: 50% → grey tank, 50% → black tank.
+  - Fresh water outflow (flow meter 1): decreases the fresh tank and fills
+    grey + black tanks at the configured split ratios.
+  - City water inflow (flow meter 2): does NOT decrease the fresh tank but
+    still fills grey + black tanks (water is used and ends up in waste tanks).
 """
 
 FRESH_TANK_CAPACITY_GALLONS = 60.0
 GREY_TANK_CAPACITY_GALLONS = 60.0
 BLACK_TANK_CAPACITY_GALLONS = 40.0
 
-# Grey/black fill split from fresh outflow
+# Grey/black fill split from water outflow
 GREY_SPLIT = 0.5
 BLACK_SPLIT = 0.5
 
@@ -20,12 +22,24 @@ DAILY_USAGE_GALLONS = 15.0
 
 # Module-level state updated by the flow meter integration
 _fresh_gallons_used: float = 0.0
+_city_gallons_used: float = 0.0
 
 
 def update_from_flow_meter(total_gallons_used: float) -> None:
-    """Update internal state from the flow meter's cumulative gallons reading."""
+    """Update internal state from the fresh-water flow meter's cumulative reading."""
     global _fresh_gallons_used
     _fresh_gallons_used = total_gallons_used
+
+
+def update_from_city_water_meter(total_gallons_used: float) -> None:
+    """
+    Update internal state from the city-water flow meter's cumulative reading.
+
+    City water does not draw from the fresh tank but does fill the grey and
+    black holding tanks at the same split ratios as fresh outflow.
+    """
+    global _city_gallons_used
+    _city_gallons_used = total_gallons_used
 
 
 def get_fresh_level() -> dict:
@@ -52,7 +66,7 @@ def get_grey_level() -> dict:
     """
     Return grey water tank status.
 
-    Grey tank fills at GREY_SPLIT of fresh water outflow.
+    Grey tank fills at GREY_SPLIT of total water outflow (fresh + city water).
 
     Returns a dict with keys:
         capacity_gallons  – maximum tank size
@@ -60,7 +74,8 @@ def get_grey_level() -> dict:
         percent_full      – 0–100
         healthy           – True if level is below 80%
     """
-    accumulated = min(GREY_TANK_CAPACITY_GALLONS, _fresh_gallons_used * GREY_SPLIT)
+    total_outflow = _fresh_gallons_used + _city_gallons_used
+    accumulated = min(GREY_TANK_CAPACITY_GALLONS, total_outflow * GREY_SPLIT)
     percent = (accumulated / GREY_TANK_CAPACITY_GALLONS) * 100.0
     return {
         "capacity_gallons": GREY_TANK_CAPACITY_GALLONS,
@@ -74,7 +89,7 @@ def get_black_level() -> dict:
     """
     Return black water tank status.
 
-    Black tank fills at BLACK_SPLIT of fresh water outflow.
+    Black tank fills at BLACK_SPLIT of total water outflow (fresh + city water).
 
     Returns a dict with keys:
         capacity_gallons  – maximum tank size
@@ -82,7 +97,8 @@ def get_black_level() -> dict:
         percent_full      – 0–100
         healthy           – True if level is below 80%
     """
-    accumulated = min(BLACK_TANK_CAPACITY_GALLONS, _fresh_gallons_used * BLACK_SPLIT)
+    total_outflow = _fresh_gallons_used + _city_gallons_used
+    accumulated = min(BLACK_TANK_CAPACITY_GALLONS, total_outflow * BLACK_SPLIT)
     percent = (accumulated / BLACK_TANK_CAPACITY_GALLONS) * 100.0
     return {
         "capacity_gallons": BLACK_TANK_CAPACITY_GALLONS,

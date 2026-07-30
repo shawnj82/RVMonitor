@@ -17,8 +17,8 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
-from sensors.flow_meter_client import FlowMeterClient
-from logic import tank_logic
+from sensors.mqtt_flow_meter_client import MqttFlowMeterClient
+from sensors.sensor_config import MQTT_BROKER, MQTT_PORT, SENSOR_MODULES
 from ui.main_screen import MainScreen
 from ui.navigation import Navigator
 
@@ -32,20 +32,19 @@ SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 1024
 
 
-def _connect_flow_meter() -> FlowMeterClient:
+def _connect_flow_meters() -> MqttFlowMeterClient:
     """
-    Attempt to connect to the ESP32 flow meter and seed tank logic.
+    Attempt to connect to the MQTT broker for flow meter data.
 
     If the connection fails the app continues with zero flow data.
+    Returns the client (kept alive for the application lifetime).
     """
-    client = FlowMeterClient()
+    client = MqttFlowMeterClient(MQTT_BROKER, MQTT_PORT, SENSOR_MODULES)
     connected = client.connect()
     if connected:
-        gallons = client.get_total_gallons_used()
-        tank_logic.update_from_flow_meter(gallons)
-        logger.info("Flow meter connected – total gallons used: %.2f", gallons)
+        logger.info("MQTT flow meter client connecting to broker %s:%s", MQTT_BROKER, MQTT_PORT)
     else:
-        logger.warning("Flow meter not reachable – using placeholder tank levels")
+        logger.warning("MQTT broker not reachable – using placeholder tank levels")
     return client
 
 
@@ -67,8 +66,8 @@ def main() -> int:
         """
     )
 
-    # Flow meter (non-blocking – app runs even without hardware)
-    flow_client = _connect_flow_meter()  # noqa: F841  (kept alive)
+    # Flow meter MQTT client (non-blocking – app runs even without hardware)
+    flow_client = _connect_flow_meters()  # noqa: F841  (kept alive)
 
     # Main window
     window = QMainWindow()

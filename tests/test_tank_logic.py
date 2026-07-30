@@ -14,8 +14,10 @@ import pytest
 def reset_flow_meter():
     """Reset module state before each test."""
     tank_logic.update_from_flow_meter(0.0)
+    tank_logic.update_from_city_water_meter(0.0)
     yield
     tank_logic.update_from_flow_meter(0.0)
+    tank_logic.update_from_city_water_meter(0.0)
 
 
 class TestFreshLevel:
@@ -131,3 +133,41 @@ class TestWaterDaysRemaining:
             assert tank_logic.get_water_days_remaining() is None
         finally:
             tank_logic.DAILY_USAGE_GALLONS = original
+
+
+class TestCityWaterMeter:
+    def test_city_water_does_not_affect_fresh_tank(self):
+        tank_logic.update_from_city_water_meter(30.0)
+        fresh = tank_logic.get_fresh_level()
+        assert fresh["current_gallons"] == 60.0
+
+    def test_city_water_fills_grey_tank(self):
+        tank_logic.update_from_city_water_meter(20.0)
+        grey = tank_logic.get_grey_level()
+        assert grey["current_gallons"] == pytest.approx(10.0, rel=1e-3)
+
+    def test_city_water_fills_black_tank(self):
+        tank_logic.update_from_city_water_meter(20.0)
+        black = tank_logic.get_black_level()
+        assert black["current_gallons"] == pytest.approx(10.0, rel=1e-3)
+
+    def test_city_and_fresh_water_accumulate_in_waste_tanks(self):
+        # 10 gal fresh + 10 gal city = 20 gal total outflow → 10 gal grey, 10 gal black
+        tank_logic.update_from_flow_meter(10.0)
+        tank_logic.update_from_city_water_meter(10.0)
+        grey = tank_logic.get_grey_level()
+        black = tank_logic.get_black_level()
+        assert grey["current_gallons"] == pytest.approx(10.0, rel=1e-3)
+        assert black["current_gallons"] == pytest.approx(10.0, rel=1e-3)
+
+    def test_city_water_only_fresh_tank_unaffected_by_city(self):
+        # Fresh tank should only be drawn down by fresh water meter, not city
+        tank_logic.update_from_flow_meter(20.0)
+        tank_logic.update_from_city_water_meter(40.0)
+        fresh = tank_logic.get_fresh_level()
+        # Only 20 gallons drawn from fresh tank
+        assert fresh["current_gallons"] == pytest.approx(40.0, rel=1e-3)
+
+    def test_update_from_city_water_meter(self):
+        tank_logic.update_from_city_water_meter(15.0)
+        assert tank_logic._city_gallons_used == pytest.approx(15.0, rel=1e-3)
