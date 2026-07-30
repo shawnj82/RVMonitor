@@ -43,12 +43,12 @@ def _default_routing_rules() -> dict[str, dict]:
 
 
 _stream_totals: dict[str, float] = {
-    "fresh_water_out": 0.0,
-    "city_water_in": 0.0,
+    "fresh_water_out": 16.8,
+    "city_water_in": 7.2,
 }
 _routing_rules: dict[str, dict] = _default_routing_rules()
-_fresh_gallons_used: float = 0.0
-_city_gallons_used: float = 0.0
+_fresh_gallons_used: float = 16.8
+_city_gallons_used: float = 7.2
 
 
 def _normalize_inputs(stream_id: str, rule: dict) -> list[dict]:
@@ -320,6 +320,7 @@ def get_fresh_level() -> dict:
         "current_gallons": round(remaining, 2),
         "percent_full": round(percent, 1),
         "healthy": percent > 20.0,
+        "flow_rate_gpm": 1.5,
     }
 
 
@@ -332,6 +333,7 @@ def get_grey_level() -> dict:
         "current_gallons": round(accumulated, 2),
         "percent_full": round(percent, 1),
         "healthy": percent < 80.0,
+        "fill_rate_gpm": 1.5,
     }
 
 

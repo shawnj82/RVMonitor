@@ -87,6 +87,14 @@ class SystemTile(QFrame):
         gauge_row.addWidget(gauge)
         layout.addLayout(gauge_row)
 
+        # Info text (optional flow-rate or other secondary stat)
+        self._info_label = QLabel("")
+        self._info_label.setFont(QFont("Inter", 10))
+        self._info_label.setStyleSheet("color: #94a3b8;")
+        self._info_label.setAlignment(Qt.AlignCenter)
+        self._info_label.setVisible(False)
+        layout.addWidget(self._info_label)
+
         # Health indicator pill
         pill_row = QHBoxLayout()
         pill_row.addStretch()
@@ -100,6 +108,10 @@ class SystemTile(QFrame):
     def set_healthy(self, healthy: bool) -> None:
         color = "#16a34a" if healthy else "#dc2626"
         self._status_dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+
+    def set_info_text(self, text: str) -> None:
+        self._info_label.setText(text)
+        self._info_label.setVisible(bool(text))
 
     # ------------------------------------------------------------------
     # Interaction
@@ -199,6 +211,7 @@ class MainScreen(QWidget):
         self._store = store
         self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
         self._section_days: list[tuple[QLabel, callable]] = []
+        self._info_tiles: list[tuple[SystemTile, callable, str]] = []
         self._sensor_list_screen = None
 
         self._build_ui()
@@ -270,6 +283,9 @@ class MainScreen(QWidget):
             "Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav),
         )
         fresh_tile.set_healthy(fresh_data["healthy"])
+        rate = fresh_data.get("flow_rate_gpm", 0.0)
+        if rate > 0:
+            fresh_tile.set_info_text(f"{rate:.1f} gpm")
 
         grey_data = get_grey_level()
         grey_gauge = TileIcon(
@@ -285,6 +301,9 @@ class MainScreen(QWidget):
             "Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav),
         )
         grey_tile.set_healthy(grey_data["healthy"])
+        fill_rate = grey_data.get("fill_rate_gpm", 0.0)
+        if fill_rate > 0:
+            grey_tile.set_info_text(f"{fill_rate:.1f} gpm")
 
         black_data = get_black_level()
         black_gauge = TileIcon(
@@ -311,6 +330,10 @@ class MainScreen(QWidget):
             (fresh_tile, fresh_gauge, get_fresh_level),
             (grey_tile, grey_gauge, get_grey_level),
             (black_tile, black_gauge, get_black_level),
+        ]
+        self._info_tiles += [
+            (fresh_tile, get_fresh_level, "flow_rate_gpm"),
+            (grey_tile, get_grey_level, "fill_rate_gpm"),
         ]
 
         # ── Power ──────────────────────────────────────────────────────
@@ -449,6 +472,11 @@ class MainScreen(QWidget):
                     gauge.set_amps(amps)
 
             tile.set_healthy(data.get("healthy", True))
+
+        for tile, data_fn, key in self._info_tiles:
+            data = data_fn()
+            rate = data.get(key, 0.0)
+            tile.set_info_text(f"{rate:.1f} gpm" if rate > 0 else "")
 
         for label, days_fn in self._section_days:
             _update_days_label(label, days_fn())

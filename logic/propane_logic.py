@@ -3,7 +3,7 @@ Propane logic – placeholder until real sensors are connected.
 """
 
 # Estimated daily consumption as a percentage of one full tank (placeholder)
-DAILY_USAGE_PERCENT = 5.0
+DAILY_USAGE_PERCENT = 24.0
 
 
 def get_propane_status(tank_number: int = 1) -> dict:
@@ -19,8 +19,8 @@ def get_propane_status(tank_number: int = 1) -> dict:
         psi           – pressure in PSI
         healthy       – True when level is above 10%
     """
-    mock_levels = {1: 65.0, 2: 30.0}
-    mock_psi = {1: 90.0, 2: 42.0}
+    mock_levels = {1: 54.0, 2: 100.0}
+    mock_psi = {1: 75.0, 2: 135.0}
     percent = mock_levels.get(tank_number, 0.0)
     psi = mock_psi.get(tank_number, 0.0)
     return {

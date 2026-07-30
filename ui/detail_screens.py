@@ -212,6 +212,7 @@ class FreshTankDetailScreen(BaseDetailScreen):
         self._add_value_row("capacity", "Capacity")
         self._add_value_row("current", "Remaining")
         self._add_value_row("percent", "Level")
+        self._add_value_row("flow_rate", "Flow Rate")
         self._add_health_banner()
         self._content_layout.addStretch()
 
@@ -222,6 +223,8 @@ class FreshTankDetailScreen(BaseDetailScreen):
         self._value_labels["capacity"].setText(f"{data['capacity_gallons']:.0f} gal")
         self._value_labels["current"].setText(f"{data['current_gallons']:.1f} gal")
         self._value_labels["percent"].setText(f"{data['percent_full']:.1f} %")
+        rate = data.get("flow_rate_gpm", 0.0)
+        self._value_labels["flow_rate"].setText(f"{rate:.1f} gpm" if rate > 0 else "—")
         self._set_health(data["healthy"])
 
 
@@ -248,6 +251,7 @@ class GreyTankDetailScreen(BaseDetailScreen):
         self._add_value_row("capacity", "Capacity")
         self._add_value_row("current", "Accumulated")
         self._add_value_row("percent", "Level")
+        self._add_value_row("fill_rate", "Fill Rate")
         self._add_health_banner()
         self._content_layout.addStretch()
 
@@ -258,6 +262,8 @@ class GreyTankDetailScreen(BaseDetailScreen):
         self._value_labels["capacity"].setText(f"{data['capacity_gallons']:.0f} gal")
         self._value_labels["current"].setText(f"{data['current_gallons']:.1f} gal")
         self._value_labels["percent"].setText(f"{data['percent_full']:.1f} %")
+        rate = data.get("fill_rate_gpm", 0.0)
+        self._value_labels["fill_rate"].setText(f"{rate:.1f} gpm" if rate > 0 else "—")
         self._set_health(data["healthy"])
 
 
