@@ -15,8 +15,34 @@ from sensors.mqtt_flow_meter_client import MqttFlowMeterClient
 SENSOR_MODULES = {
     "flow_module_01": {
         "description": "Test module",
-        "flow1": {"role": "fresh_water_out", "description": "Fresh outflow"},
-        "flow2": {"role": "city_water_in", "description": "City water"},
+        "flow1": {
+            "stream_id": "fresh_water_out",
+            "description": "Fresh outflow",
+            "routing": {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": "fresh",
+            },
+        },
+        "flow2": {
+            "stream_id": "city_water_in",
+            "description": "City water",
+            "routing": {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": None,
+            },
+        },
     }
 }
 
@@ -183,6 +209,40 @@ class TestMqttFlowMeterClientOnMessage:
         msg.topic = "rv/unknown/topic"
         msg.payload = json.dumps({"gpm": 1.0}).encode()
         client._on_message(None, None, msg)
+
+    def test_custom_stream_id_updates_named_stream(self, client):
+        client._sensor_modules["flow_module_01"]["flow2"]["stream_id"] = "toilet_flow"
+        client._sensor_modules["flow_module_01"]["flow2"]["routing"] = {
+            "priority": 100,
+            "input_policy": "any_active",
+            "inputs": [
+                {"stream": "fresh_water_out", "proportion": None},
+                {"stream": "city_water_in", "proportion": None},
+            ],
+            "outputs": [{"bank": "black", "proportion": 1.0}],
+            "source_bank": None,
+        }
+        client._apply_routing_config()
+        client._on_message(
+            None,
+            None,
+            self._make_msg(
+                "rv/flowmeter/flow_module_01/flow1",
+                {"gpm": 1.0, "total_gallons": 10.0},
+            ),
+        )
+        client._on_message(
+            None,
+            None,
+            self._make_msg(
+                "rv/flowmeter/flow_module_01/flow2",
+                {"gpm": 0.7, "total_gallons": 2.0},
+            ),
+        )
+        grey = tank_logic.get_grey_level()
+        black = tank_logic.get_black_level()
+        assert grey["current_gallons"] == pytest.approx(4.0, rel=1e-3)
+        assert black["current_gallons"] == pytest.approx(6.0, rel=1e-3)
 
 
 class TestMqttFlowMeterClientSetRelay:

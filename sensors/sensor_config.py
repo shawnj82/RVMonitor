@@ -1,21 +1,13 @@
 """
-Sensor configuration – maps ESP32 flow-meter module IDs to RV tank roles.
+Sensor configuration – maps ESP32 flow-meter module IDs to stream routing.
 
-Add one entry per deployed ESP32 module.  Each module publishes two flow
-meters and one relay; the ``role`` field tells the Pi-side logic layer what
-each meter is measuring.
-
-Supported roles
----------------
-``fresh_water_out``
-    Water drawn from the fresh-water tank.  Decreases the fresh level and
-    increases grey + black levels at the configured split ratios.
-
-``city_water_in``
-    Water entering from a city hookup.  Does **not** draw from the fresh tank,
-    but does increase grey + black levels (water still goes somewhere after use).
-
-Add new roles here and handle them in ``logic/tank_logic.py`` as needed.
+Add one entry per deployed ESP32 module. Each module publishes two flow
+meters and one relay. Each meter should define a ``stream_id`` and a
+``routing`` rule with:
+    - ``inputs`` (optional upstream streams),
+    - ``outputs`` (destination banks + proportions),
+    - ``input_policy`` (``weighted`` or ``any_active``),
+    - ``priority`` and optional ``source_bank`` for depletion accounting.
 """
 
 from __future__ import annotations
@@ -30,12 +22,32 @@ SENSOR_MODULES: dict[str, dict] = {
     "flow_module_01": {
         "description": "Bay-area fresh-water and city-water meters + pump relay",
         "flow1": {
-            "role": "fresh_water_out",
+            "stream_id": "fresh_water_out",
             "description": "Fresh water tank outflow",
+            "routing": {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": "fresh",
+            },
         },
         "flow2": {
-            "role": "city_water_in",
+            "stream_id": "city_water_in",
             "description": "City water hookup inflow",
+            "routing": {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": None,
+            },
         },
     },
 }

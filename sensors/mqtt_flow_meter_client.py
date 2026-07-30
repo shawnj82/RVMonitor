@@ -81,6 +81,7 @@ class MqttFlowMeterClient:
         self._mqtt.on_connect = self._on_connect
         self._mqtt.on_message = self._on_message
         self._mqtt.on_disconnect = self._on_disconnect
+        self._apply_routing_config()
 
     # ------------------------------------------------------------------
     # Connection management
@@ -183,6 +184,7 @@ class MqttFlowMeterClient:
                     "flow2": {"gpm": 0.0, "total_gallons": 0.0},
                     "relay": {"state": "off"},
                 }
+            self._apply_routing_config()
 
         if self._connected:
             base = f"rv/flowmeter/{sensor_id}"
@@ -206,6 +208,7 @@ class MqttFlowMeterClient:
         """
         with self._lock:
             self._sensor_modules[sensor_id] = config
+            self._apply_routing_config()
         logger.info("MqttFlowMeterClient: updated config for module %s", sensor_id)
 
     def remove_sensor_module(self, sensor_id: str) -> None:
@@ -218,6 +221,7 @@ class MqttFlowMeterClient:
         with self._lock:
             self._sensor_modules.pop(sensor_id, None)
             self._state.pop(sensor_id, None)
+            self._apply_routing_config()
 
         if self._connected:
             base = f"rv/flowmeter/{sensor_id}"
@@ -294,17 +298,13 @@ class MqttFlowMeterClient:
             self._state[sensor_id][meter_key] = {"gpm": gpm, "total_gallons": total}
 
         role = module_cfg.get(meter_key, {}).get("role", "")
-        if role == "fresh_water_out":
-            tank_logic.update_from_flow_meter(total)
+        meter_cfg = module_cfg.get(meter_key, {})
+        stream_id = str(meter_cfg.get("stream_id", "")).strip() or role
+        if stream_id and stream_id != "none":
+            tank_logic.update_from_stream(stream_id, total)
             logger.debug(
-                "MqttFlowMeterClient: fresh outflow %.3f gpm, total %.2f gal",
-                gpm, total,
-            )
-        elif role == "city_water_in":
-            tank_logic.update_from_city_water_meter(total)
-            logger.debug(
-                "MqttFlowMeterClient: city water %.3f gpm, total %.2f gal",
-                gpm, total,
+                "MqttFlowMeterClient: stream '%s' %.3f gpm, total %.2f gal",
+                stream_id, gpm, total,
             )
 
     def _handle_relay(self, sensor_id: str, payload: dict) -> None:
@@ -312,3 +312,60 @@ class MqttFlowMeterClient:
         with self._lock:
             self._state[sensor_id]["relay"] = {"state": state}
         logger.debug("MqttFlowMeterClient: relay %s → %s", sensor_id, state)
+
+    def _apply_routing_config(self) -> None:
+        routing_rules: dict[str, dict] = {}
+        for module_cfg in self._sensor_modules.values():
+            for meter_key in ("flow1", "flow2"):
+                meter_cfg = module_cfg.get(meter_key, {})
+                stream_id = str(meter_cfg.get("stream_id", "")).strip()
+                if not stream_id or stream_id == "none":
+                    role = str(meter_cfg.get("role", "")).strip()
+                    stream_id = role if role in ("fresh_water_out", "city_water_in") else ""
+                if not stream_id:
+                    continue
+                routing = meter_cfg.get("routing")
+                if not isinstance(routing, dict):
+                    routing = self._legacy_role_to_routing(str(meter_cfg.get("role", "none")))
+                routing_rules[stream_id] = routing
+        if "fresh_water_out" not in routing_rules:
+            routing_rules["fresh_water_out"] = self._legacy_role_to_routing("fresh_water_out")
+        if "city_water_in" not in routing_rules:
+            routing_rules["city_water_in"] = self._legacy_role_to_routing("city_water_in")
+        try:
+            tank_logic.set_flow_routing(routing_rules)
+        except ValueError as exc:
+            logger.error("MqttFlowMeterClient: invalid routing config ignored (%s)", exc)
+
+    @staticmethod
+    def _legacy_role_to_routing(role: str) -> dict:
+        role = str(role).strip()
+        if role == "fresh_water_out":
+            return {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": "fresh",
+            }
+        if role == "city_water_in":
+            return {
+                "priority": 0,
+                "input_policy": "weighted",
+                "inputs": [],
+                "outputs": [
+                    {"bank": "grey", "proportion": 0.5},
+                    {"bank": "black", "proportion": 0.5},
+                ],
+                "source_bank": None,
+            }
+        return {
+            "priority": 0,
+            "input_policy": "weighted",
+            "inputs": [],
+            "outputs": [],
+            "source_bank": None,
+        }

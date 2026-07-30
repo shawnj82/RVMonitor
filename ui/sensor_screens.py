@@ -9,10 +9,8 @@ SensorEditScreen
     Full-screen form for creating or editing a sensor module.  Fields:
         • Sensor ID   (text, locked when editing)
         • Description (text)
-        • Flow Meter 1 role        (dropdown)
-        • Flow Meter 1 description (text)
-        • Flow Meter 2 role        (dropdown)
-        • Flow Meter 2 description (text)
+        • Flow Meter routing fields (stream, inputs, policy, outputs, priority)
+        • Flow Meter descriptions
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from sensors.sensor_store import VALID_ROLES, SensorStore
+from sensors.sensor_store import SensorStore
 
 if TYPE_CHECKING:
     from ui.navigation import Navigator
@@ -73,10 +71,9 @@ _BTN_SECONDARY = (
     "QPushButton:pressed { background: #374151; }"
 )
 
-_ROLE_LABELS: dict[str, str] = {
-    "fresh_water_out": "Fresh Water Out",
-    "city_water_in": "City Water In",
-    "none": "Not Assigned",
+_INPUT_POLICY_LABELS: dict[str, str] = {
+    "weighted": "Weighted",
+    "any_active": "Any Active Source",
 }
 
 _SENSOR_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,48}$")
@@ -258,11 +255,20 @@ class SensorListScreen(QWidget):
             desc_lbl.setWordWrap(True)
             info.addWidget(desc_lbl)
 
-        roles = []
+        stream_summaries = []
         for meter in ("flow1", "flow2"):
-            role = cfg.get(meter, {}).get("role", "none")
-            roles.append(f"{meter}: {_ROLE_LABELS.get(role, role)}")
-        role_lbl = QLabel(" · ".join(roles))
+            meter_cfg = cfg.get(meter, {})
+            stream_id = meter_cfg.get("stream_id") or meter_cfg.get("role", "none")
+            outputs = meter_cfg.get("routing", {}).get("outputs", [])
+            if outputs:
+                out_text = ", ".join(
+                    f"{o.get('bank', '?')}:{int(round(float(o.get('proportion', 0.0)) * 100))}%"
+                    for o in outputs
+                )
+            else:
+                out_text = "no outputs"
+            stream_summaries.append(f"{meter}: {stream_id} → {out_text}")
+        role_lbl = QLabel(" · ".join(stream_summaries))
         role_lbl.setFont(QFont("Inter", 11))
         role_lbl.setStyleSheet("color: #374151;")
         info.addWidget(role_lbl)
@@ -366,13 +372,50 @@ class SensorEditScreen(QWidget):
         self._desc_field.setText(config.get("description", ""))
 
         for meter, combo, desc_field in (
-            ("flow1", self._flow1_combo, self._flow1_desc),
-            ("flow2", self._flow2_combo, self._flow2_desc),
+            ("flow1", self._flow1_policy_combo, self._flow1_desc),
+            ("flow2", self._flow2_policy_combo, self._flow2_desc),
         ):
-            role = config.get(meter, {}).get("role", "none")
-            idx = combo.findData(role)
+            meter_cfg = config.get(meter, {})
+            routing = meter_cfg.get("routing", {})
+            policy = routing.get("input_policy", "weighted")
+            idx = combo.findData(policy)
             combo.setCurrentIndex(idx if idx >= 0 else 0)
-            desc_field.setText(config.get(meter, {}).get("description", ""))
+            desc_field.setText(meter_cfg.get("description", ""))
+
+            stream_field = self._flow1_stream if meter == "flow1" else self._flow2_stream
+            inputs_field = self._flow1_inputs if meter == "flow1" else self._flow2_inputs
+            input_weights = self._flow1_input_weights if meter == "flow1" else self._flow2_input_weights
+            outputs_field = self._flow1_outputs if meter == "flow1" else self._flow2_outputs
+            source_field = self._flow1_source_bank if meter == "flow1" else self._flow2_source_bank
+            priority_field = self._flow1_priority if meter == "flow1" else self._flow2_priority
+
+            stream_field.setText(meter_cfg.get("stream_id", meter_cfg.get("role", "none")))
+            inputs = routing.get("inputs", [])
+            inputs_field.setText(
+                ", ".join(
+                    str(item.get("stream", "")).strip()
+                    for item in inputs
+                    if isinstance(item, dict) and str(item.get("stream", "")).strip()
+                )
+            )
+            input_weights.setText(
+                ", ".join(
+                    f"{item.get('stream')}:{int(round(float(item.get('proportion')) * 100))}"
+                    for item in inputs
+                    if isinstance(item, dict) and item.get("proportion") is not None
+                )
+            )
+            outputs = routing.get("outputs", [])
+            outputs_field.setText(
+                ", ".join(
+                    f"{item.get('bank')}:{int(round(float(item.get('proportion', 0.0)) * 100))}"
+                    for item in outputs
+                    if isinstance(item, dict)
+                )
+            )
+            source_bank = routing.get("source_bank")
+            source_field.setText("" if source_bank is None else str(source_bank))
+            priority_field.setText(str(routing.get("priority", 0)))
 
         self._error_label.setText("")
         self._save_btn.setText("Save" if sensor_id else "Add Sensor")
@@ -418,9 +461,51 @@ class SensorEditScreen(QWidget):
         # ── Flow Meter 1 ──────────────────────────────────────────────
         form.addWidget(_section_label("FLOW METER 1"))
 
-        form.addWidget(_field_label("Role"))
-        self._flow1_combo = self._make_role_combo()
-        form.addWidget(self._flow1_combo)
+        form.addWidget(_field_label("Stream ID"))
+        self._flow1_stream = QLineEdit()
+        self._flow1_stream.setPlaceholderText("e.g. fresh_water_out")
+        self._flow1_stream.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_stream)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Sources (comma-separated stream IDs)"))
+        self._flow1_inputs = QLineEdit()
+        self._flow1_inputs.setPlaceholderText("e.g. fresh_water_out, city_water_in")
+        self._flow1_inputs.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_inputs)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Policy"))
+        self._flow1_policy_combo = self._make_policy_combo()
+        form.addWidget(self._flow1_policy_combo)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Weights % (stream:percent, optional)"))
+        self._flow1_input_weights = QLineEdit()
+        self._flow1_input_weights.setPlaceholderText("e.g. fresh_water_out:50, city_water_in:50")
+        self._flow1_input_weights.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_input_weights)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Output Splits % (bank:percent)"))
+        self._flow1_outputs = QLineEdit()
+        self._flow1_outputs.setPlaceholderText("e.g. grey:60, black:40")
+        self._flow1_outputs.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_outputs)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Source Bank (fresh/grey/black, optional)"))
+        self._flow1_source_bank = QLineEdit()
+        self._flow1_source_bank.setPlaceholderText("e.g. fresh")
+        self._flow1_source_bank.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_source_bank)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Priority"))
+        self._flow1_priority = QLineEdit()
+        self._flow1_priority.setPlaceholderText("0")
+        self._flow1_priority.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow1_priority)
         form.addSpacing(12)
 
         form.addWidget(_field_label("Description"))
@@ -432,9 +517,51 @@ class SensorEditScreen(QWidget):
         # ── Flow Meter 2 ──────────────────────────────────────────────
         form.addWidget(_section_label("FLOW METER 2"))
 
-        form.addWidget(_field_label("Role"))
-        self._flow2_combo = self._make_role_combo()
-        form.addWidget(self._flow2_combo)
+        form.addWidget(_field_label("Stream ID"))
+        self._flow2_stream = QLineEdit()
+        self._flow2_stream.setPlaceholderText("e.g. city_water_in")
+        self._flow2_stream.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_stream)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Sources (comma-separated stream IDs)"))
+        self._flow2_inputs = QLineEdit()
+        self._flow2_inputs.setPlaceholderText("e.g. fresh_water_out, city_water_in")
+        self._flow2_inputs.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_inputs)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Policy"))
+        self._flow2_policy_combo = self._make_policy_combo()
+        form.addWidget(self._flow2_policy_combo)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Input Weights % (stream:percent, optional)"))
+        self._flow2_input_weights = QLineEdit()
+        self._flow2_input_weights.setPlaceholderText("e.g. fresh_water_out:50, city_water_in:50")
+        self._flow2_input_weights.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_input_weights)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Output Splits % (bank:percent)"))
+        self._flow2_outputs = QLineEdit()
+        self._flow2_outputs.setPlaceholderText("e.g. black:100")
+        self._flow2_outputs.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_outputs)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Source Bank (fresh/grey/black, optional)"))
+        self._flow2_source_bank = QLineEdit()
+        self._flow2_source_bank.setPlaceholderText("e.g. fresh")
+        self._flow2_source_bank.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_source_bank)
+        form.addSpacing(12)
+
+        form.addWidget(_field_label("Priority"))
+        self._flow2_priority = QLineEdit()
+        self._flow2_priority.setPlaceholderText("0")
+        self._flow2_priority.setStyleSheet(_INPUT_STYLE)
+        form.addWidget(self._flow2_priority)
         form.addSpacing(12)
 
         form.addWidget(_field_label("Description"))
@@ -465,11 +592,11 @@ class SensorEditScreen(QWidget):
         root.addWidget(scroll, stretch=1)
 
     @staticmethod
-    def _make_role_combo() -> QComboBox:
+    def _make_policy_combo() -> QComboBox:
         combo = QComboBox()
         combo.setStyleSheet(_COMBO_STYLE)
-        for role in VALID_ROLES:
-            combo.addItem(_ROLE_LABELS.get(role, role), userData=role)
+        for policy in ("weighted", "any_active"):
+            combo.addItem(_INPUT_POLICY_LABELS.get(policy, policy), userData=policy)
         return combo
 
     # ------------------------------------------------------------------
@@ -491,17 +618,121 @@ class SensorEditScreen(QWidget):
             self._error_label.setText(f"A sensor with ID «{sensor_id}» already exists.")
             return
 
-        config = {
-            "description": description,
-            "flow1": {
-                "role": self._flow1_combo.currentData(),
-                "description": self._flow1_desc.text().strip(),
-            },
-            "flow2": {
-                "role": self._flow2_combo.currentData(),
-                "description": self._flow2_desc.text().strip(),
-            },
-        }
+        try:
+            flow1_cfg = self._build_meter_config(
+                stream_id=self._flow1_stream.text().strip(),
+                policy=self._flow1_policy_combo.currentData(),
+                inputs_text=self._flow1_inputs.text().strip(),
+                input_weights_text=self._flow1_input_weights.text().strip(),
+                outputs_text=self._flow1_outputs.text().strip(),
+                source_bank_text=self._flow1_source_bank.text().strip(),
+                priority_text=self._flow1_priority.text().strip(),
+                description_text=self._flow1_desc.text().strip(),
+            )
+            flow2_cfg = self._build_meter_config(
+                stream_id=self._flow2_stream.text().strip(),
+                policy=self._flow2_policy_combo.currentData(),
+                inputs_text=self._flow2_inputs.text().strip(),
+                input_weights_text=self._flow2_input_weights.text().strip(),
+                outputs_text=self._flow2_outputs.text().strip(),
+                source_bank_text=self._flow2_source_bank.text().strip(),
+                priority_text=self._flow2_priority.text().strip(),
+                description_text=self._flow2_desc.text().strip(),
+            )
+        except ValueError as exc:
+            self._error_label.setText(str(exc))
+            return
+
+        config = {"description": description, "flow1": flow1_cfg, "flow2": flow2_cfg}
 
         self._store.add_or_update_module(sensor_id, config)
         self._navigator.pop()
+
+    @staticmethod
+    def _parse_split_pairs(text: str, *, allow_empty: bool) -> list[tuple[str, float]]:
+        if not text:
+            return []
+        items = [part.strip() for part in text.split(",") if part.strip()]
+        pairs: list[tuple[str, float]] = []
+        for item in items:
+            if ":" not in item:
+                raise ValueError(f"Expected key:percent entry: '{item}'")
+            key, raw_pct = item.split(":", 1)
+            key = key.strip()
+            if not key:
+                raise ValueError("Split entry key cannot be empty")
+            try:
+                pct = float(raw_pct.strip())
+            except ValueError as exc:
+                raise ValueError(f"Invalid percent in '{item}'") from exc
+            if pct < 0:
+                raise ValueError(f"Percent must be >= 0 in '{item}'")
+            pairs.append((key, pct / 100.0))
+        if not allow_empty and not pairs:
+            raise ValueError("At least one split entry is required")
+        return pairs
+
+    @staticmethod
+    def _build_meter_config(
+        *,
+        stream_id: str,
+        policy: str,
+        inputs_text: str,
+        input_weights_text: str,
+        outputs_text: str,
+        source_bank_text: str,
+        priority_text: str,
+        description_text: str,
+    ) -> dict:
+        if not stream_id:
+            stream_id = "none"
+
+        source_names = [item.strip() for item in inputs_text.split(",") if item.strip()]
+        input_weights = dict(
+            SensorEditScreen._parse_split_pairs(input_weights_text, allow_empty=True)
+        )
+        inputs: list[dict] = []
+        for src in source_names:
+            inputs.append({"stream": src, "proportion": input_weights.get(src)})
+
+        outputs = [
+            {"bank": bank.lower(), "proportion": proportion}
+            for bank, proportion in SensorEditScreen._parse_split_pairs(
+                outputs_text, allow_empty=True
+            )
+        ]
+        if outputs:
+            total = sum(item["proportion"] for item in outputs)
+            if abs(total - 1.0) > 1e-6:
+                raise ValueError(
+                    f"Output percentages for stream '{stream_id}' must sum to 100"
+                )
+
+        try:
+            priority = int(priority_text or "0")
+        except ValueError as exc:
+            raise ValueError(f"Priority must be an integer for stream '{stream_id}'") from exc
+
+        source_bank = source_bank_text.lower() if source_bank_text else None
+        if source_bank not in (None, "fresh", "grey", "black"):
+            raise ValueError(
+                f"Source bank must be fresh, grey, black, or empty for stream '{stream_id}'"
+            )
+
+        if policy not in ("weighted", "any_active"):
+            raise ValueError(f"Invalid input policy for stream '{stream_id}'")
+
+        if stream_id == "none" and outputs:
+            raise ValueError("Not Assigned stream cannot have output splits")
+
+        return {
+            "stream_id": stream_id,
+            "description": description_text,
+            "routing": {
+                "priority": priority,
+                "input_policy": policy,
+                "inputs": inputs,
+                "outputs": outputs,
+                "source_bank": source_bank,
+            },
+        }

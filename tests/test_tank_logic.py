@@ -9,13 +9,38 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import logic.tank_logic as tank_logic
 import pytest
 
+DEFAULT_ROUTING = {
+    "fresh_water_out": {
+        "priority": 0,
+        "input_policy": "weighted",
+        "inputs": [],
+        "outputs": [
+            {"bank": "grey", "proportion": 0.5},
+            {"bank": "black", "proportion": 0.5},
+        ],
+        "source_bank": "fresh",
+    },
+    "city_water_in": {
+        "priority": 0,
+        "input_policy": "weighted",
+        "inputs": [],
+        "outputs": [
+            {"bank": "grey", "proportion": 0.5},
+            {"bank": "black", "proportion": 0.5},
+        ],
+        "source_bank": None,
+    },
+}
+
 
 @pytest.fixture(autouse=True)
 def reset_flow_meter():
     """Reset module state before each test."""
+    tank_logic.set_flow_routing(DEFAULT_ROUTING)
     tank_logic.update_from_flow_meter(0.0)
     tank_logic.update_from_city_water_meter(0.0)
     yield
+    tank_logic.set_flow_routing(DEFAULT_ROUTING)
     tank_logic.update_from_flow_meter(0.0)
     tank_logic.update_from_city_water_meter(0.0)
 
@@ -171,3 +196,111 @@ class TestCityWaterMeter:
     def test_update_from_city_water_meter(self):
         tank_logic.update_from_city_water_meter(15.0)
         assert tank_logic._city_gallons_used == pytest.approx(15.0, rel=1e-3)
+
+
+class TestAdvancedRouting:
+    def test_60_40_split_from_fresh(self):
+        tank_logic.set_flow_routing(
+            {
+                "fresh_water_out": {
+                    "priority": 0,
+                    "input_policy": "weighted",
+                    "inputs": [],
+                    "outputs": [
+                        {"bank": "grey", "proportion": 0.6},
+                        {"bank": "black", "proportion": 0.4},
+                    ],
+                    "source_bank": "fresh",
+                },
+                "city_water_in": DEFAULT_ROUTING["city_water_in"],
+            }
+        )
+        tank_logic.update_from_flow_meter(10.0)
+        grey = tank_logic.get_grey_level()
+        black = tank_logic.get_black_level()
+        assert grey["current_gallons"] == pytest.approx(6.0, rel=1e-3)
+        assert black["current_gallons"] == pytest.approx(4.0, rel=1e-3)
+
+    def test_toilet_override_forces_black(self):
+        tank_logic.set_flow_routing(
+            {
+                "fresh_water_out": {
+                    "priority": 0,
+                    "input_policy": "weighted",
+                    "inputs": [],
+                    "outputs": [
+                        {"bank": "grey", "proportion": 0.6},
+                        {"bank": "black", "proportion": 0.4},
+                    ],
+                    "source_bank": "fresh",
+                },
+                "city_water_in": {
+                    "priority": 0,
+                    "input_policy": "weighted",
+                    "inputs": [],
+                    "outputs": [
+                        {"bank": "grey", "proportion": 0.6},
+                        {"bank": "black", "proportion": 0.4},
+                    ],
+                    "source_bank": None,
+                },
+                "toilet_flow": {
+                    "priority": 100,
+                    "input_policy": "any_active",
+                    "inputs": [
+                        {"stream": "fresh_water_out", "proportion": None},
+                        {"stream": "city_water_in", "proportion": None},
+                    ],
+                    "outputs": [{"bank": "black", "proportion": 1.0}],
+                    "source_bank": None,
+                },
+            }
+        )
+        tank_logic.update_from_flow_meter(10.0)
+        tank_logic.update_from_stream("toilet_flow", 2.0)
+        grey = tank_logic.get_grey_level()
+        black = tank_logic.get_black_level()
+        assert grey["current_gallons"] == pytest.approx(4.8, rel=1e-3)
+        assert black["current_gallons"] == pytest.approx(5.2, rel=1e-3)
+
+    def test_any_active_uses_available_source(self):
+        tank_logic.set_flow_routing(
+            {
+                **DEFAULT_ROUTING,
+                "toilet_flow": {
+                    "priority": 100,
+                    "input_policy": "any_active",
+                    "inputs": [
+                        {"stream": "fresh_water_out", "proportion": None},
+                        {"stream": "city_water_in", "proportion": None},
+                    ],
+                    "outputs": [{"bank": "black", "proportion": 1.0}],
+                    "source_bank": None,
+                },
+            }
+        )
+        tank_logic.update_from_city_water_meter(10.0)
+        tank_logic.update_from_stream("toilet_flow", 4.0)
+        grey = tank_logic.get_grey_level()
+        black = tank_logic.get_black_level()
+        fresh = tank_logic.get_fresh_level()
+        assert fresh["current_gallons"] == pytest.approx(60.0, rel=1e-3)
+        assert grey["current_gallons"] == pytest.approx(3.0, rel=1e-3)
+        assert black["current_gallons"] == pytest.approx(7.0, rel=1e-3)
+
+    def test_rejects_invalid_output_sum(self):
+        with pytest.raises(ValueError):
+            tank_logic.set_flow_routing(
+                {
+                    "fresh_water_out": {
+                        "priority": 0,
+                        "input_policy": "weighted",
+                        "inputs": [],
+                        "outputs": [
+                            {"bank": "grey", "proportion": 0.4},
+                            {"bank": "black", "proportion": 0.4},
+                        ],
+                        "source_bank": "fresh",
+                    }
+                }
+            )

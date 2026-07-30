@@ -39,6 +39,38 @@ _SAMPLE_MODULE = {
     "flow2": {"role": "city_water_in",   "description": "City in"},
 }
 
+_SAMPLE_ROUTED_MODULE = {
+    "description": "Routed module",
+    "flow1": {
+        "stream_id": "fresh_water_out",
+        "description": "Fresh out",
+        "routing": {
+            "priority": 0,
+            "input_policy": "weighted",
+            "inputs": [],
+            "outputs": [
+                {"bank": "grey", "proportion": 0.6},
+                {"bank": "black", "proportion": 0.4},
+            ],
+            "source_bank": "fresh",
+        },
+    },
+    "flow2": {
+        "stream_id": "toilet_flow",
+        "description": "Toilet",
+        "routing": {
+            "priority": 100,
+            "input_policy": "any_active",
+            "inputs": [
+                {"stream": "fresh_water_out", "proportion": None},
+                {"stream": "city_water_in", "proportion": None},
+            ],
+            "outputs": [{"bank": "black", "proportion": 1.0}],
+            "source_bank": None,
+        },
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # VALID_ROLES constant
@@ -178,7 +210,47 @@ class TestGetModule:
         store.add_or_update_module("m1", _SAMPLE_MODULE)
         result = store.get_module("m1")
         assert result["description"] == _SAMPLE_MODULE["description"]
-        assert result["flow1"]["role"] == "fresh_water_out"
+        assert result["flow1"]["stream_id"] == "fresh_water_out"
+
+
+class TestRoutingConfig:
+    def test_legacy_role_is_migrated_to_stream_and_routing(self):
+        store = _store(seed={"mqtt_broker": "localhost", "mqtt_port": 1883, "sensor_modules": {}})
+        store.add_or_update_module("m1", _SAMPLE_MODULE)
+        module = store.get_module("m1")
+        assert module["flow1"]["stream_id"] == "fresh_water_out"
+        assert module["flow1"]["routing"]["source_bank"] == "fresh"
+        assert module["flow2"]["routing"]["outputs"]
+
+    def test_get_flow_routing_returns_stream_rules(self):
+        store = _store(seed={"mqtt_broker": "localhost", "mqtt_port": 1883, "sensor_modules": {}})
+        store.add_or_update_module("m1", _SAMPLE_ROUTED_MODULE)
+        routing = store.get_flow_routing()
+        assert "fresh_water_out" in routing
+        assert routing["fresh_water_out"]["outputs"][0]["bank"] == "grey"
+        assert "toilet_flow" in routing
+
+    def test_rejects_invalid_output_percentages(self):
+        store = _store()
+        bad = {
+            "description": "bad",
+            "flow1": {
+                "stream_id": "x",
+                "routing": {
+                    "priority": 0,
+                    "input_policy": "weighted",
+                    "inputs": [],
+                    "outputs": [
+                        {"bank": "grey", "proportion": 0.4},
+                        {"bank": "black", "proportion": 0.5},
+                    ],
+                    "source_bank": None,
+                },
+            },
+            "flow2": {"stream_id": "none", "routing": {"outputs": []}},
+        }
+        with pytest.raises(ValueError):
+            store.add_or_update_module("bad", bad)
 
 
 # ---------------------------------------------------------------------------
