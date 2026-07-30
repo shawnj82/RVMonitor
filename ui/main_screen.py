@@ -186,6 +186,14 @@ def _update_days_label(label: QLabel, days: float | None) -> None:
     label.setStyleSheet(f"color: {color}; padding: 4px 0 2px 0;")
 
 
+def _format_current_use(value: float, unit: str = "") -> str:
+    """Return the standard tile current-use line text."""
+    value_text = f"{value:g}"
+    if unit:
+        return f"Current use: {value_text} {unit}"
+    return f"Current use: {value_text}"
+
+
 class MainScreen(QWidget):
     """
     Main dashboard showing grouped tiles for all RV systems.
@@ -211,7 +219,7 @@ class MainScreen(QWidget):
         self._store = store
         self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
         self._section_days: list[tuple[QLabel, callable]] = []
-        self._info_tiles: list[tuple[SystemTile, callable, str]] = []
+        self._info_tiles: list[tuple[SystemTile, callable, str, str]] = []
         self._sensor_list_screen = None
 
         self._build_ui()
@@ -283,9 +291,6 @@ class MainScreen(QWidget):
             "Fresh", fresh_gauge, nav, lambda: FreshTankDetailScreen(nav),
         )
         fresh_tile.set_healthy(fresh_data["healthy"])
-        rate = fresh_data.get("flow_rate_gpm", 0.0)
-        if rate > 0:
-            fresh_tile.set_info_text(f"{rate:.1f} gpm")
 
         grey_data = get_grey_level()
         grey_gauge = TileIcon(
@@ -301,9 +306,6 @@ class MainScreen(QWidget):
             "Grey", grey_gauge, nav, lambda: GreyTankDetailScreen(nav),
         )
         grey_tile.set_healthy(grey_data["healthy"])
-        fill_rate = grey_data.get("fill_rate_gpm", 0.0)
-        if fill_rate > 0:
-            grey_tile.set_info_text(f"{fill_rate:.1f} gpm")
 
         black_data = get_black_level()
         black_gauge = TileIcon(
@@ -332,8 +334,9 @@ class MainScreen(QWidget):
             (black_tile, black_gauge, get_black_level),
         ]
         self._info_tiles += [
-            (fresh_tile, get_fresh_level, "flow_rate_gpm"),
-            (grey_tile, get_grey_level, "fill_rate_gpm"),
+            (fresh_tile, get_fresh_level, "flow_rate_gpm", "gpm"),
+            (grey_tile, get_grey_level, "fill_rate_gpm", "gpm"),
+            (black_tile, get_black_level, "", ""),
         ]
 
         # ── Power ──────────────────────────────────────────────────────
@@ -399,6 +402,11 @@ class MainScreen(QWidget):
             (acc_tile, acc_gauge, get_accessory_battery_status),
             (solar_tile, solar_gauge, get_solar_charger_status),
         ]
+        self._info_tiles += [
+            (house_tile, get_house_battery_status, "amps", "A"),
+            (acc_tile, get_accessory_battery_status, "amps", "A"),
+            (solar_tile, get_solar_charger_status, "amps", "A"),
+        ]
 
         # ── Propane ────────────────────────────────────────────────────
         content.addSpacing(16)
@@ -444,6 +452,10 @@ class MainScreen(QWidget):
             (p1_tile, p1_gauge, lambda: get_propane_status(1)),
             (p2_tile, p2_gauge, lambda: get_propane_status(2)),
         ]
+        self._info_tiles += [
+            (p1_tile, lambda: get_propane_status(1), "", ""),
+            (p2_tile, lambda: get_propane_status(2), "", ""),
+        ]
 
         content.addStretch()
         scroll.setWidget(container)
@@ -473,10 +485,14 @@ class MainScreen(QWidget):
 
             tile.set_healthy(data.get("healthy", True))
 
-        for tile, data_fn, key in self._info_tiles:
+        for tile, data_fn, key, unit in self._info_tiles:
             data = data_fn()
-            rate = data.get(key, 0.0)
-            tile.set_info_text(f"{rate:.1f} gpm" if rate > 0 else "")
+            value = data.get(key, 0.0) if key else 0.0
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                numeric_value = 0.0
+            tile.set_info_text(_format_current_use(numeric_value, unit))
 
         for label, days_fn in self._section_days:
             _update_days_label(label, days_fn())
