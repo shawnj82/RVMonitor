@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -137,6 +137,19 @@ def _divider() -> QFrame:
     return div
 
 
+class _ClickableSensorRow(QWidget):
+    """Sensor list row container that emits click events."""
+
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.LeftButton:
+            target = self.childAt(event.position().toPoint())
+            if not isinstance(target, QPushButton):
+                self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 # ---------------------------------------------------------------------------
 # SensorListScreen
 # ---------------------------------------------------------------------------
@@ -234,8 +247,10 @@ class SensorListScreen(QWidget):
             layout.insertWidget(i + 1, _divider())
 
     def _build_sensor_row(self, sensor_id: str, cfg: dict) -> QWidget:
-        row = QWidget()
+        row = _ClickableSensorRow()
         row.setStyleSheet("background: transparent;")
+        row.setCursor(Qt.PointingHandCursor)
+        row.clicked.connect(lambda sid=sensor_id: self._on_edit(sid))
         h = QHBoxLayout(row)
         h.setContentsMargins(0, 14, 0, 14)
         h.setSpacing(10)
