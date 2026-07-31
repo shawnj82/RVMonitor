@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -30,6 +31,7 @@ from ui.load_screens import LoadPresetBar
 from ui.widgets import TileIcon
 
 if TYPE_CHECKING:
+    from sensors.sensor_store import SensorStore
     from ui.navigation import Navigator
 
 # Refresh interval for live data (ms)
@@ -85,6 +87,14 @@ class SystemTile(QFrame):
         gauge_row.addWidget(gauge)
         layout.addLayout(gauge_row)
 
+        # Info text (optional flow-rate or other secondary stat)
+        self._info_label = QLabel("")
+        self._info_label.setFont(QFont("Inter", 10))
+        self._info_label.setStyleSheet("color: #94a3b8;")
+        self._info_label.setAlignment(Qt.AlignCenter)
+        self._info_label.setVisible(False)
+        layout.addWidget(self._info_label)
+
         # Health indicator pill
         pill_row = QHBoxLayout()
         pill_row.addStretch()
@@ -98,6 +108,10 @@ class SystemTile(QFrame):
     def set_healthy(self, healthy: bool) -> None:
         color = "#16a34a" if healthy else "#dc2626"
         self._status_dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+
+    def set_info_text(self, text: str) -> None:
+        self._info_label.setText(text)
+        self._info_label.setVisible(bool(text))
 
     # ------------------------------------------------------------------
     # Interaction
@@ -172,6 +186,14 @@ def _update_days_label(label: QLabel, days: float | None) -> None:
     label.setStyleSheet(f"color: {color}; padding: 4px 0 2px 0;")
 
 
+def _format_current_use(value: float, unit: str = "") -> str:
+    """Return the standard tile current-use line text."""
+    value_text = f"{value:g}"
+    if unit:
+        return f"Current use: {value_text} {unit}"
+    return f"Current use: {value_text}"
+
+
 class MainScreen(QWidget):
     """
     Main dashboard showing grouped tiles for all RV systems.
@@ -181,13 +203,24 @@ class MainScreen(QWidget):
         Water    – Fresh | Grey | Black  (3 tiles across)
         Power    – House | Accessory | Solar (3 tiles across)
         Propane  – Tank 1 | Tank 2       (2 tiles across)
+
+    A compact top header contains a ⚙ Sensors button for navigating to the
+    sensor node configuration screen.
     """
 
-    def __init__(self, navigator: "Navigator", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        navigator: "Navigator",
+        store: "SensorStore | None" = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._navigator = navigator
+        self._store = store
         self._tiles: list[tuple[SystemTile, TileIcon, callable]] = []
         self._section_days: list[tuple[QLabel, callable]] = []
+        self._info_tiles: list[tuple[SystemTile, callable, str, str]] = []
+        self._sensor_list_screen = None
 
         self._build_ui()
         self._refresh_data()
@@ -205,6 +238,16 @@ class MainScreen(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # Top header bar with Sensors button
+        root.addWidget(self._build_header())
+
+        # Divider
+        div = QFrame()
+        div.setFrameShape(QFrame.HLine)
+        div.setFixedHeight(1)
+        div.setStyleSheet("background: #1f2937; border: none;")
+        root.addWidget(div)
 
         # Scrollable content
         scroll = QScrollArea()
@@ -290,6 +333,11 @@ class MainScreen(QWidget):
             (grey_tile, grey_gauge, get_grey_level),
             (black_tile, black_gauge, get_black_level),
         ]
+        self._info_tiles += [
+            (fresh_tile, get_fresh_level, "flow_rate_gpm", "gpm"),
+            (grey_tile, get_grey_level, "fill_rate_gpm", "gpm"),
+            (black_tile, get_black_level, "", ""),
+        ]
 
         # ── Power ──────────────────────────────────────────────────────
         content.addSpacing(16)
@@ -354,6 +402,11 @@ class MainScreen(QWidget):
             (acc_tile, acc_gauge, get_accessory_battery_status),
             (solar_tile, solar_gauge, get_solar_charger_status),
         ]
+        self._info_tiles += [
+            (house_tile, get_house_battery_status, "amps", "A"),
+            (acc_tile, get_accessory_battery_status, "amps", "A"),
+            (solar_tile, get_solar_charger_status, "amps", "A"),
+        ]
 
         # ── Propane ────────────────────────────────────────────────────
         content.addSpacing(16)
@@ -399,6 +452,10 @@ class MainScreen(QWidget):
             (p1_tile, p1_gauge, lambda: get_propane_status(1)),
             (p2_tile, p2_gauge, lambda: get_propane_status(2)),
         ]
+        self._info_tiles += [
+            (p1_tile, lambda: get_propane_status(1), "", ""),
+            (p2_tile, lambda: get_propane_status(2), "", ""),
+        ]
 
         content.addStretch()
         scroll.setWidget(container)
@@ -428,5 +485,53 @@ class MainScreen(QWidget):
 
             tile.set_healthy(data.get("healthy", True))
 
+        for tile, data_fn, key, unit in self._info_tiles:
+            data = data_fn()
+            value = data.get(key, 0.0) if key else 0.0
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                numeric_value = 0.0
+            tile.set_info_text(_format_current_use(numeric_value, unit))
+
         for label, days_fn in self._section_days:
             _update_days_label(label, days_fn())
+
+    # ------------------------------------------------------------------
+    # Header
+    # ------------------------------------------------------------------
+
+    def _build_header(self) -> QWidget:
+        """Return a 48-px top bar with the app title and Sensors button."""
+        header = QWidget()
+        header.setFixedHeight(48)
+        header.setStyleSheet("background: #08090e;")
+
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(14, 0, 10, 0)
+
+        title = QLabel("RV Monitor")
+        title.setFont(QFont("Inter", 15, QFont.Bold))
+        title.setStyleSheet("color: #f8fafc;")
+        layout.addWidget(title, stretch=1)
+
+        sensors_btn = QPushButton("⚙ Sensors")
+        sensors_btn.setFont(QFont("Inter", 12))
+        sensors_btn.setStyleSheet(
+            "QPushButton { color: #93c5fd; background: transparent; border: none; padding: 4px 8px; }"
+            "QPushButton:pressed { color: #60a5fa; }"
+        )
+        sensors_btn.setCursor(Qt.PointingHandCursor)
+        sensors_btn.clicked.connect(self._on_sensors_nav)
+        layout.addWidget(sensors_btn)
+
+        return header
+
+    def _on_sensors_nav(self) -> None:
+        """Navigate to the sensor configuration screen."""
+        if self._store is None:
+            return
+        if self._sensor_list_screen is None:
+            from ui.sensor_screens import SensorListScreen  # noqa: PLC0415
+            self._sensor_list_screen = SensorListScreen(self._navigator, self._store)
+        self._navigator.push(self._sensor_list_screen)

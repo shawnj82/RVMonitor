@@ -26,3 +26,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime sensor configuration (user-managed; contains site-specific settings)
+data/sensors.json

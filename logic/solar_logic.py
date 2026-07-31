@@ -26,8 +26,8 @@ def get_solar_charger_status() -> dict:
         mode    – icon mode: sun/cloud_light/cloud_heavy/moon
         healthy – True when production is above a low threshold
     """
-    percent = 62.0
-    watts = 455.0
+    percent = 45.0
+    watts = 115.2
     amps = round(watts / 14.4, 1)
     daily_ah = round(watts * PEAK_SUN_HOURS / 14.4, 1)
     return {

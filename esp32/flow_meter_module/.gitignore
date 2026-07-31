@@ -1,0 +1,6 @@
+# Local configuration override (contains WiFi credentials – never commit)
+config_local.py
+
+# MicroPython compiled bytecode
+*.mpy
+__pycache__/

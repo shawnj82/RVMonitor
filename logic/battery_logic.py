@@ -17,9 +17,9 @@ def get_house_battery_status() -> dict:
         healthy      – True when SoC is above 20%
     """
     return {
-        "voltage": 12.6,
-        "percent": 85.0,
-        "amps": -5.2,
+        "voltage": 13.2,
+        "percent": 80.0,
+        "amps": 8.0,
         "healthy": True,
     }
 
@@ -46,19 +46,24 @@ def get_power_days_remaining() -> float | None:
     """
     Estimate days until the house battery bank is depleted.
 
-    Compares daily solar generation against daily consumption:
+    When the battery is net-charging (amps >= 0) there is no depletion risk.
+    Otherwise, compares daily solar generation against daily consumption:
         daily_consumption_ah = abs(house amps) * 24 hours
         daily_generation_ah  = solar daily_ah (watts × peak sun hours / voltage)
 
-    A net surplus (generation >= consumption) means no depletion risk.
+    A net surplus (generation >= consumption) also means no depletion risk.
 
     Returns:
         float  – days remaining at the current net daily deficit rate, or
-        None   – daily generation covers consumption (surplus, no depletion risk).
+        None   – battery is net-charging, or daily generation covers consumption.
     """
     from logic.solar_logic import get_solar_charger_status
 
     house = get_house_battery_status()
+
+    if house["amps"] >= 0:
+        return None  # net charging – no depletion risk
+
     solar = get_solar_charger_status()
 
     daily_consumption_ah = abs(house["amps"]) * 24.0
